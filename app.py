@@ -18,24 +18,30 @@ default_tickers = "EIMI.L, SWDA.L, CBU0.L, IB01.L, CNDX.L"
 tickers_input = st.sidebar.text_input("Wpisz tickery:", default_tickers)
 ticker_list = [t.strip().upper() for t in tickers_input.split(",")]
 
-# Zmieniamy na 3 lata, aby suwak był czytelny (więcej miejsca na podpisy)
+# Pobieramy dane (3 lata, by suwak był czytelny)
 start_download = datetime.now() - timedelta(days=3*365)
 
 with st.spinner('Pobieranie danych...'):
     all_data = get_data(ticker_list, start_download)
 
 if not all_data.empty:
-    # Generujemy listę końców miesięcy
+    # Generujemy końce miesięcy
     month_ends = pd.date_range(start=all_data.index.min(), end=all_data.index.max(), freq='ME')
 
     st.write("### Przesuń suwak (okno 12m)")
     
-    # Suwak z pionowymi kreskami i podpisami MM/YY
+    # KLUCZOWA ZMIANA: format_func wyświetla etykietę co 3 miesiące, 
+    # aby Streamlit miał miejsce na narysowanie pionowych kresek.
+    def label_filter(date):
+        if date.month % 3 == 0: # Etykieta co kwartał
+            return date.strftime('%m/%y')
+        return "" # Pozostałe punkty zostają "kreskami" bez tekstu
+
     selected_end_date = st.select_slider(
         "Wybierz miesiąc końcowy wykresu:",
         options=month_ends,
         value=month_ends[-1],
-        format_func=lambda x: x.strftime('%m/%y')
+        format_func=label_filter
     )
 
     selected_start_date = selected_end_date - timedelta(days=365)
@@ -54,10 +60,6 @@ if not all_data.empty:
             window_data = ticker_series.loc[mask]
             
             if not window_data.empty:
-                # Filtr pików
-                diff = window_data.pct_change().abs()
-                window_data = window_data[diff < 0.3]
-                
                 initial_price = float(window_data.iloc[0])
                 returns = ((window_data / initial_price) - 1) * 100
                 
