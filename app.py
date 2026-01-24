@@ -3,11 +3,11 @@ import yfinance as yf
 import plotly.graph_objects as go
 from datetime import datetime, timedelta
 
-st.set_page_config(page_title="Monitor Aktywów", layout="wide")
-st.title("📈 Wspólny Wykres Aktywów")
+st.set_page_config(page_title="Monitor Aktywów - % Zwrotu", layout="wide")
+st.title("📈 Procentowa Stopa Zwrotu (Skumulowana)")
 
 st.sidebar.header("Ustawienia")
-tickers_input = st.sidebar.text_input("Wpisz tickery (np. AAPL, TSLA, BTC-USD):", "AAPL, TSLA")
+tickers_input = st.sidebar.text_input("Wpisz tickery:", "AAPL, TSLA, SPY, BTC-USD")
 timeframe = st.sidebar.selectbox("Wybierz okno czasowe:", 
                                 ["1 msc", "3 msc", "6 msc", "12 msc", "2 lata"], 
                                 index=3)
@@ -17,27 +17,32 @@ start_date = datetime.now() - timedelta(days=mapping[timeframe])
 
 ticker_list = [t.strip().upper() for t in tickers_input.split(",")]
 
-# Tworzymy jeden wspólny obiekt wykresu
 fig = go.Figure()
 
 for ticker in ticker_list:
     try:
         data = yf.download(ticker, start=start_date, multi_level_index=False)
         if not data.empty:
-            # Dodajemy linię dla każdego tickera do tego samego wykresu
-            fig.add_trace(go.Scatter(x=data.index, y=data['Close'], mode='lines', name=ticker))
+            # Obliczanie skumulowanej stopy zwrotu: ((Cena / Cena_początkowa) - 1) * 100
+            initial_price = data['Close'].iloc[0]
+            returns = ((data['Close'] / initial_price) - 1) * 100
+            
+            fig.add_trace(go.Scatter(x=data.index, y=returns, mode='lines', name=ticker))
         else:
             st.warning(f"Brak danych dla: {ticker}")
     except Exception as e:
         st.error(f"Błąd przy {ticker}: {e}")
 
-# Ustawienia wspólnego wykresu
 fig.update_layout(
-    title=f"Porównanie cen - ostatnie {timeframe}",
+    title=f"Porównanie % zwrotu od początku okresu ({timeframe})",
     xaxis_title="Data",
-    yaxis_title="Cena",
+    yaxis_title="Zmiana procentowa (%)",
     template="plotly_dark",
-    hovermode="x unified" # Pokazuje ceny wszystkich aktywów po najechaniu myszką
+    hovermode="x unified",
+    yaxis_ticksuffix="%" # Dodaje symbol % do osi Y
 )
+
+# Dodanie linii poziomej na poziomie 0% dla czytelności
+fig.add_hline(y=0, line_dash="dash", line_color="gray")
 
 st.plotly_chart(fig, use_container_width=True)
