@@ -66,7 +66,7 @@ if not all_data.empty:
                     y=returns, 
                     mode='lines', 
                     name=ticker,
-                    fill='tozeroy'
+                    fill='none'
                 ))
         except Exception as e:
             st.error(f"Błąd przy {ticker}: {e}")
@@ -82,3 +82,4 @@ if not all_data.empty:
     st.plotly_chart(fig, use_container_width=True)
 else:
     st.error("Nie udało się pobrać żadnych danych. Sprawdź tickery.")
+
