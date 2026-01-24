@@ -7,7 +7,7 @@ st.set_page_config(page_title="Monitor Aktywów - % Zwrotu", layout="wide")
 st.title("📈 Procentowa Stopa Zwrotu (Skumulowana)")
 
 st.sidebar.header("Ustawienia")
-tickers_input = st.sidebar.text_input("Wpisz tickery:", "AAPL, TSLA, SPY, BTC-USD")
+tickers_input = st.sidebar.text_input("Wpisz tickery:", "EIMI.L, SWDA.L ,CBU0.L ,IB01.L ,CNDX.L ")
 timeframe = st.sidebar.selectbox("Wybierz okno czasowe:", 
                                 ["1 msc", "3 msc", "6 msc", "12 msc", "2 lata"], 
                                 index=3)
@@ -46,3 +46,4 @@ fig.update_layout(
 fig.add_hline(y=0, line_dash="dash", line_color="gray")
 
 st.plotly_chart(fig, use_container_width=True)
+
