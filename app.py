@@ -36,15 +36,7 @@ if not all_data.empty:
 
     st.write("### Przesuń suwak (okno 12m)")
     
-    # Funkcja, która decyduje, co wyświetlić, by nie zapchać suwaka
-    def smart_label(date):
-        # Wyświetlaj etykietę tylko dla stycznia (początek roku) lub lipca (połowa)
-        # To zwolni miejsce i wymusi pojawienie się kresek oraz napisów
-        if date.month == 1:
-            return date.strftime('styczeń %Y')
-        elif date.month == 7:
-            return date.strftime('%m/%y')
-        return "" # Reszta punktów to same kreski bez tekstu
+
 
     selected_end = st.select_slider(
         "Data końcowa widoku:",
@@ -103,6 +95,7 @@ if not all_data.empty:
     st.plotly_chart(fig, use_container_width=True)
 else:
     st.error("Błąd pobierania danych.")
+
 
 
 
