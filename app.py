@@ -22,16 +22,22 @@ fig = go.Figure()
 for ticker in ticker_list:
     try:
         data = yf.download(ticker, start=start_date, multi_level_index=False)
-        if not data.empty:
-            # Obliczanie skumulowanej stopy zwrotu: ((Cena / Cena_początkowa) - 1) * 100
+        if not data.empty and len(data) > 1:
+            # Usuwanie błędnych danych (pików) - usuwamy dni, gdzie skok ceny jest nierealny
+            data['Pct_Change'] = data['Close'].pct_change()
+            data = data[data['Pct_Change'].abs() < 0.5] # Ignoruj skoki > 50% dziennie
+            
             initial_price = data['Close'].iloc[0]
             returns = ((data['Close'] / initial_price) - 1) * 100
             
-            fig.add_trace(go.Scatter(x=data.index, y=returns, mode='lines', name=ticker))
-        else:
-            st.warning(f"Brak danych dla: {ticker}")
-    except Exception as e:
-        st.error(f"Błąd przy {ticker}: {e}")
+            fig.add_trace(go.Scatter(
+                x=data.index, 
+                y=returns, 
+                mode='lines', 
+                name=ticker,
+                fill='tozeroy',
+                hovertemplate='%{y:.2f}%'
+            ))
 
 fig.update_layout(
     title=f"Porównanie % zwrotu od początku okresu ({timeframe})",
@@ -46,4 +52,5 @@ fig.update_layout(
 fig.add_hline(y=0, line_dash="dash", line_color="gray")
 
 st.plotly_chart(fig, use_container_width=True)
+
 
