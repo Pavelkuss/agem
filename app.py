@@ -4,7 +4,7 @@ import plotly.graph_objects as go
 from datetime import datetime, timedelta
 
 st.set_page_config(page_title="Monitor Aktywów", layout="wide")
-st.title("📈 Analiza Procentowej Stopy Zwrotu")
+st.title("📈 Advanced Global Equity Momentum Strategy")
 
 st.sidebar.header("Ustawienia")
 default_tickers = "EIMI.L, SWDA.L, CBU0.L, IB01.L, CNDX.L"
@@ -60,3 +60,4 @@ fig.update_layout(
 fig.add_hline(y=0, line_dash="solid", line_color="white", line_width=1)
 
 st.plotly_chart(fig, use_container_width=True)
+
