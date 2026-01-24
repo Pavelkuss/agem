@@ -13,7 +13,7 @@ def get_ticker_names(ticker_list):
         try:
             info = yf.Ticker(t).info
             # Próba pobrania długiej nazwy, jeśli brak - krótkiej, jeśli brak - zostaje ticker
-            names[t] = info.get('longName') or info.get('shortName') or t
+            names[t] = info.get('shortName') or t
         except:
             names[t] = t
     return names
@@ -103,4 +103,5 @@ if not all_data.empty:
     st.plotly_chart(fig, use_container_width=True)
 else:
     st.error("Błąd pobierania danych.")
+
 
