@@ -2,88 +2,68 @@ import streamlit as st
 import yfinance as yf
 import plotly.graph_objects as go
 from datetime import datetime, timedelta
-import pandas as pd
 
-st.set_page_config(page_title="Monitor Trendu 12m", layout="wide")
-st.title("📈 Przesuwne okno 12-miesięczne")
+st.set_page_config(page_title="Monitor ETF", layout="wide")
 
 @st.cache_data(ttl=3600)
 def get_data(tickers, start):
-    data = yf.download(tickers, start=start, multi_level_index=False)
-    return data
+    return yf.download(tickers, start=start, multi_level_index=False)
 
-# Sidebar
-st.sidebar.header("Ustawienia")
-default_tickers = "EIMI.L, SWDA.L, CBU0.L, IB01.L, CNDX.L"
-tickers_input = st.sidebar.text_input("Wpisz tickery:", default_tickers)
-ticker_list = [t.strip().upper() for t in tickers_input.split(",")]
+# Konfiguracja danych
+tickers = ["EIMI.L", "SWDA.L", "CBU0.L", "IB01.L", "CNDX.L"]
+# Pobieramy 5 lat, aby suwak na dole miał szeroki zakres
+start_date = datetime.now() - timedelta(days=5*365)
 
-# Pobieramy dane (3 lata, by suwak był czytelny)
-start_download = datetime.now() - timedelta(days=3*365)
-
-with st.spinner('Pobieranie danych...'):
-    all_data = get_data(ticker_list, start_download)
+all_data = get_data(tickers, start_date)
 
 if not all_data.empty:
-    # Generujemy końce miesięcy
-    month_ends = pd.date_range(start=all_data.index.min(), end=all_data.index.max(), freq='ME')
-
-    st.write("### Przesuń suwak (okno 12m)")
-    
-    # KLUCZOWA ZMIANA: format_func wyświetla etykietę co 3 miesiące, 
-    # aby Streamlit miał miejsce na narysowanie pionowych kresek.
-    def label_filter(date):
-        if date.month % 3 == 0: # Etykieta co kwartał
-            return date.strftime('%m/%y')
-        return "" # Pozostałe punkty zostają "kreskami" bez tekstu
-
-    selected_end_date = st.select_slider(
-        "Wybierz miesiąc końcowy wykresu:",
-        options=month_ends,
-        value=month_ends[-1],
-        format_func=label_filter
-    )
-
-    selected_start_date = selected_end_date - timedelta(days=365)
-    
     fig = go.Figure()
+    
+    # Określamy domyślne okno 12m (ostatni rok)
+    end_view = all_data.index.max()
+    start_view = end_view - timedelta(days=365)
 
-    for ticker in ticker_list:
-        try:
-            if len(ticker_list) > 1:
-                ticker_series = all_data['Close'][ticker].dropna()
-            else:
-                ticker_series = all_data['Close'].dropna()
+    for ticker in tickers:
+        if ticker in all_data['Close']:
+            # Obliczamy zwrot względem CAŁEGO okresu, 
+            # Plotly sam przeskaluje oś Y przy przesuwaniu
+            series = all_data['Close'][ticker].dropna()
+            initial_price = series.iloc[0]
+            returns = ((series / initial_price) - 1) * 100
             
-            mask = (ticker_series.index >= pd.Timestamp(selected_start_date)) & \
-                   (ticker_series.index <= pd.Timestamp(selected_end_date))
-            window_data = ticker_series.loc[mask]
-            
-            if not window_data.empty:
-                initial_price = float(window_data.iloc[0])
-                returns = ((window_data / initial_price) - 1) * 100
-                
-                fig.add_trace(go.Scatter(
-                    x=window_data.index, 
-                    y=returns, 
-                    mode='lines', 
-                    name=ticker,
-                    line=dict(width=3),
-                    hovertemplate='%{y:.2f}%'
-                ))
-        except Exception as e:
-            st.error(f"Błąd przy {ticker}: {e}")
+            fig.add_trace(go.Scatter(
+                x=series.index, 
+                y=returns, 
+                mode='lines', 
+                name=ticker,
+                line=dict(width=2)
+            ))
 
+    # Konfiguracja suwaka pod wykresem (na wzór JustETF)
     fig.update_layout(
-        title=f"Wynik w oknie: {selected_start_date.strftime('%d/%m/%Y')} - {selected_end_date.strftime('%d/%m/%Y')}",
         template="plotly_dark",
-        hovermode="x unified",
-        yaxis=dict(ticksuffix="%", gridcolor='rgba(255, 255, 255, 0.1)'),
-        xaxis=dict(range=[selected_start_date, selected_end_date], gridcolor='rgba(255, 255, 255, 0.1)'),
+        height=600,
+        xaxis=dict(
+            rangeselector=dict(
+                buttons=list([
+                    dict(count=6, label="6m", step="month", stepmode="backward"),
+                    dict(count=1, label="1y", step="year", stepmode="backward"),
+                    dict(step="all", label="MAX")
+                ]),
+                bgcolor="#222",
+                font=dict(color="white")
+            ),
+            # To jest suwak na dole
+            rangeslider=dict(visible=True, thickness=0.08),
+            type="date",
+            # Ustawienie sztywnego widoku startowego na 12 msc
+            range=[start_view, end_view]
+        ),
+        yaxis=dict(ticksuffix="%", fixedrange=False),
+        margin=dict(l=50, r=50, t=50, b=50),
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
     )
 
-    fig.add_hline(y=0, line_dash="dash", line_color="gray")
     st.plotly_chart(fig, use_container_width=True)
 else:
-    st.error("Brak danych.")
+    st.error("Błąd pobierania danych.")
