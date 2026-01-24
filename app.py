@@ -6,6 +6,18 @@ import pandas as pd
 
 st.set_page_config(page_title="Monitor ETF", layout="wide")
 
+@st.cache_data(ttl=86400) # Nazwy pobieramy rzadziej (raz na dobę)
+def get_ticker_names(ticker_list):
+    names = {}
+    for t in ticker_list:
+        try:
+            info = yf.Ticker(t).info
+            # Próba pobrania długiej nazwy, jeśli brak - krótkiej, jeśli brak - zostaje ticker
+            names[t] = info.get('longName') or info.get('shortName') or t
+        except:
+            names[t] = t
+    return names
+
 @st.cache_data(ttl=3600)
 def get_data(tickers, start):
     return yf.download(tickers, start=start, multi_level_index=False)
@@ -13,64 +25,67 @@ def get_data(tickers, start):
 tickers = ["EIMI.L", "SWDA.L", "CBU0.L", "IB01.L", "CNDX.L"]
 start_download = datetime.now() - timedelta(days=5*365)
 
-with st.spinner('Pobieranie danych...'):
+# Pobieranie danych i nazw
+with st.spinner('Pobieranie danych i nazw aktywów...'):
     all_data = get_data(tickers, start_download)
+    ticker_names = get_ticker_names(tickers)
 
 if not all_data.empty:
-    # 1. Definiujemy punkty na suwaku (co miesiąc)
     month_ends = pd.date_range(start=all_data.index.min(), end=all_data.index.max(), freq='ME')
 
-    # 2. Suwak pod tytułem, który steruje oknem 12m
+    st.write("### Przesuń suwak, aby zmienić okres (okno zawsze 12 msc)")
     selected_end = st.select_slider(
-        "Przesuń, aby zobaczyć trend (okno 12m):",
+        "Data końcowa (podpisy kwartalne):",
         options=month_ends,
         value=month_ends[-1],
-        format_func=lambda x: x.strftime('%m/%Y')
+        format_func=lambda x: x.strftime('%m/%y') if x.month % 3 == 0 else ""
     )
 
-    # Obliczamy okno
     start_view = selected_end - timedelta(days=365)
-    
     fig = go.Figure()
 
     for ticker in tickers:
         try:
-            # Wycinamy dane dla widocznego okna
             series = all_data['Close'][ticker].dropna()
             mask = (series.index >= pd.Timestamp(start_view)) & (series.index <= pd.Timestamp(selected_end))
             window_data = series.loc[mask]
             
             if not window_data.empty:
-                # PRZELICZENIE: Pierwsza cena w wybranym oknie staje się bazą (0%)
+                # Przeliczenie bazy na 0% dla początku okna
                 base_price = float(window_data.iloc[0])
                 returns = ((window_data / base_price) - 1) * 100
+                
+                # Pobranie pełnej nazwy ze słownika
+                full_name = ticker_names.get(ticker, ticker)
                 
                 fig.add_trace(go.Scatter(
                     x=window_data.index, 
                     y=returns, 
                     mode='lines', 
-                    name=ticker,
-                    line=dict(width=3)
+                    name=f"{ticker} ({full_name})", # Nazwa w legendzie
+                    line=dict(width=3),
+                    hovertemplate='<b>' + ticker + '</b><br>%{y:.2f}%'
                 ))
         except:
             continue
 
     fig.update_layout(
         template="plotly_dark",
-        height=500,
-        xaxis=dict(title="Data", gridcolor='rgba(255,255,255,0.1)'),
-        yaxis=dict(title="Zwrot % (relatywny)", ticksuffix="%", gridcolor='rgba(255,255,255,0.1)'),
+        height=600,
+        xaxis=dict(gridcolor='rgba(255,255,255,0.1)'),
+        yaxis=dict(ticksuffix="%", gridcolor='rgba(255,255,255,0.1)'),
         hovermode="x unified",
-        legend=dict(orientation="h", y=1.1)
+        legend=dict(
+            orientation="h", 
+            yanchor="bottom", 
+            y=1.02, 
+            xanchor="center", 
+            x=0.5,
+            font=dict(size=10) # Mniejsza czcionka, by pomieścić długie nazwy
+        )
     )
     
-    # Linia zero
     fig.add_hline(y=0, line_dash="dash", line_color="gray")
-
     st.plotly_chart(fig, use_container_width=True)
-
-    # 3. Miniaturowy podgląd całego okresu (jako pasek postępu)
-    st.write(f"🔍 Widok od **{start_view.strftime('%d/%m/%Y')}** do **{selected_end.strftime('%d/%m/%Y')}**")
-
 else:
-    st.error("Brak danych.")
+    st.error("Błąd pobierania danych.")
