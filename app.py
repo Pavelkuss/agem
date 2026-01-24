@@ -2,59 +2,47 @@ import streamlit as st
 import yfinance as yf
 import plotly.graph_objects as go
 from datetime import datetime, timedelta
+import pandas as pd
 
-st.set_page_config(page_title="Analiza Trendu", layout="wide")
-st.title("📈 Zaawansowany Monitor Trendu")
+st.set_page_config(page_title="Analiza Trendu 12m", layout="wide")
+st.title("📈 Przesuwne okno 12-miesięczne")
 
 # Sidebar
 st.sidebar.header("Ustawienia")
 default_tickers = "EIMI.L, SWDA.L, CBU0.L, IB01.L, CNDX.L"
 tickers_input = st.sidebar.text_input("Wpisz tickery:", default_tickers)
 
-# Pobieramy 5 lat danych, żeby mieć z czego przesuwać
+# Pobieramy 5 lat danych
 start_download = datetime.now() - timedelta(days=5*365)
 ticker_list = [t.strip().upper() for t in tickers_input.split(",")]
+
+# SUWAK DO PRZESUWANIA (Wybierasz datę końcową widoku)
+st.write("### Przesuń suwak, aby zmienić okres (okno zawsze 12 msc)")
+selected_end_date = st.slider(
+    "Data końcowa wykresu:",
+    min_value=datetime.now() - timedelta(days=4*365),
+    max_value=datetime.now(),
+    value=datetime.now(),
+    format="DD/MM/YYYY"
+)
+
+# Obliczamy stały start (12 miesięcy wstecz od suwaka)
+selected_start_date = selected_end_date - timedelta(days=365)
 
 fig = go.Figure()
 
 for ticker in ticker_list:
     try:
         data = yf.download(ticker, start=start_download, multi_level_index=False)
-        if not data.empty and len(data) > 10:
-            # Filtr błędnych danych (pików)
+        if not data.empty:
+            # Filtr pików
             data['Diff'] = data['Close'].pct_change().abs()
             data = data[data['Diff'] < 0.2].copy()
             
-            # Punkt odniesienia: 0% to początek POBRANYCH danych
-            # (Suwak pozwoli Ci to okno przesuwać)
-            initial_price = float(data['Close'].iloc[0])
-            returns = ((data['Close'] / initial_price) - 1) * 100
+            # Wycinamy dane tylko dla wybranego okna 12m, aby przeliczyć % od zera w tym oknie
+            mask = (data.index >= pd.Timestamp(selected_start_date)) & (data.index <= pd.Timestamp(selected_end_date))
+            window_data = data.loc[mask]
             
-            fig.add_trace(go.Scatter(
-                x=data.index, 
-                y=returns, 
-                mode='lines', 
-                name=ticker,
-                fill='tonexty', # Zmienione na tonexty dla lepszej stabilności przy suwaku
-                hovertemplate='%{y:.2f}%'
-            ))
-    except Exception as e:
-        st.error(f"Błąd {ticker}: {e}")
-
-# Domyślne ustawienie widoku na ostatnie 12 miesięcy
-end_date = datetime.now()
-start_view = end_date - timedelta(days=365)
-
-fig.update_layout(
-    template="plotly_dark",
-    hovermode="x unified",
-    xaxis=dict(
-        rangeslider=dict(visible=True),
-        type="date",
-        range=[start_view, end_date] # To ustawia początkowe 12m
-    ),
-    yaxis=dict(ticksuffix="%"),
-    legend=dict(orientation="h", y=1.1)
-)
-
-st.plotly_chart(fig, use_container_width=True)
+            if not window_data.empty:
+                initial_price = float(window_data['Close'].iloc[0])
+                returns = ((window_data['Close'] / initial_price) -
