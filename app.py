@@ -45,4 +45,24 @@ for ticker in ticker_list:
             
             if not window_data.empty:
                 initial_price = float(window_data['Close'].iloc[0])
-                returns = ((window_data['Close'] / initial_price) -
+                returns = ((window_data['Close'] / initial_price) - 1) * 100
+                
+                fig.add_trace(go.Scatter(
+                    x=window_data.index, 
+                    y=returns, 
+                    mode='lines', 
+                    name=ticker,
+                    fill='tozeroy'
+                ))
+    except Exception as e:
+        st.error(f"Błąd {ticker}: {e}")
+
+fig.update_layout(
+    title=f"Wynik od {selected_start_date.strftime('%d/%m/%Y')} do {selected_end_date.strftime('%d/%m/%Y')}",
+    template="plotly_dark",
+    hovermode="x unified",
+    yaxis=dict(ticksuffix="%"),
+    xaxis=dict(range=[selected_start_date, selected_end_date])
+)
+
+st.plotly_chart(fig, use_container_width=True)
