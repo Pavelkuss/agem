@@ -31,15 +31,29 @@ with st.spinner('Pobieranie danych i nazw aktywów...'):
     ticker_names = get_ticker_names(tickers)
 
 if not all_data.empty:
+    # Pobieramy wszystkie dostępne końce miesięcy
     month_ends = pd.date_range(start=all_data.index.min(), end=all_data.index.max(), freq='ME')
 
-    st.write("### Przesuń suwak, aby zmienić okres (okno zawsze 12 msc)")
+    st.write("### Przesuń suwak (okno 12m)")
+    
+    # Funkcja, która decyduje, co wyświetlić, by nie zapchać suwaka
+    def smart_label(date):
+        # Wyświetlaj etykietę tylko dla stycznia (początek roku) lub lipca (połowa)
+        # To zwolni miejsce i wymusi pojawienie się kresek oraz napisów
+        if date.month == 1:
+            return date.strftime('styczeń %Y')
+        elif date.month == 7:
+            return date.strftime('%m/%y')
+        return "" # Reszta punktów to same kreski bez tekstu
+
     selected_end = st.select_slider(
-        "Data końcowa (podpisy kwartalne):",
+        "Data końcowa widoku:",
         options=month_ends,
         value=month_ends[-1],
-        format_func=lambda x: x.strftime('%m/%y') if x.month % 3 == 0 else ""
+        format_func=smart_label
     )
+
+    # Obliczanie okna i reszta kodu bez zmian...
 
     start_view = selected_end - timedelta(days=365)
     fig = go.Figure()
@@ -89,3 +103,4 @@ if not all_data.empty:
     st.plotly_chart(fig, use_container_width=True)
 else:
     st.error("Błąd pobierania danych.")
+
