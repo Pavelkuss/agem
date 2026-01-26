@@ -24,8 +24,8 @@ def get_data(tickers, start):
     data = yf.download(tickers, start=start, multi_level_index=False)
     return data
 
-# Lista tickerów - MSE.PA zastępuje surowy indeks
-tickers = ["EIMI.L", "SWDA.L", "CBU0.L", "IB01.L", "CNDX.L", "MSE.PA"]
+# Zaktualizowana lista tickerów (SXRT.DE to iShares Core Euro Stoxx 50)
+tickers = ["EIMI.L", "SWDA.L", "CBU0.L", "IB01.L", "CNDX.L", "SXRT.DE"]
 start_download = datetime.now() - timedelta(days=5*365)
 
 with st.spinner('Ładowanie danych...'):
@@ -53,8 +53,6 @@ if not all_data.empty:
 
     start_view = selected_end - timedelta(days=365)
     fig = go.Figure()
-    
-    # Lista do rankingu
     performance_results = []
 
     for ticker in tickers:
@@ -78,7 +76,7 @@ if not all_data.empty:
                     x=window_data.index, 
                     y=returns_series, 
                     mode='lines', 
-                    name=f"{ticker}",
+                    name=ticker,
                     line=dict(width=3),
                     hovertemplate='<b>' + ticker + '</b><br>Wynik: %{y:.2f}%'
                 ))
@@ -97,8 +95,8 @@ if not all_data.empty:
     fig.add_hline(y=0, line_dash="dash", line_color="gray")
     st.plotly_chart(fig, use_container_width=True)
 
-    # Ranking pod wykresem
-    st.write("### 🏆 Ranking wyników w tym oknie")
+    # Tabela z wynikami
+    st.write("### 🏆 Ranking wyników w oknie 12m")
     df_perf = pd.DataFrame(performance_results).sort_values(by="Wynik %", ascending=False)
     st.table(df_perf)
 
