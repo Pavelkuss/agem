@@ -4,11 +4,9 @@ import plotly.graph_objects as go
 from datetime import datetime, timedelta
 import pandas as pd
 
-# Konfiguracja strony
 st.set_page_config(page_title="Monitor Trendu ETF", layout="wide")
 st.title("📈 Analiza Trendu (Okno 12m)")
 
-# 1. Pobieranie czytelnych nazw aktywów
 @st.cache_data(ttl=86400)
 def get_ticker_names(ticker_list):
     names = {}
@@ -21,29 +19,25 @@ def get_ticker_names(ticker_list):
             names[t] = t
     return names
 
-# 2. Pobieranie danych giełdowych
 @st.cache_data(ttl=3600)
 def get_data(tickers, start):
     data = yf.download(tickers, start=start, multi_level_index=False)
     return data
 
-# Lista tickerów
-tickers = ["EIMI.L", "SWDA.L", "CBU0.L", "IB01.L", "CNDX.L"]
-start_download = datetime.now() - timedelta(days=5*365) # 5 lat wstecz
+# Lista tickerów - MSE.PA zastępuje surowy indeks
+tickers = ["EIMI.L", "SWDA.L", "CBU0.L", "IB01.L", "CNDX.L", "MSE.PA"]
+start_download = datetime.now() - timedelta(days=5*365)
 
 with st.spinner('Ładowanie danych...'):
     all_data = get_data(tickers, start_download)
     asset_names = get_ticker_names(tickers)
 
 if not all_data.empty:
-    # Przygotowanie osi czasu dla suwaka (końce miesięcy)
     month_ends = pd.date_range(start=all_data.index.min(), end=all_data.index.max(), freq='ME')
 
     st.write("### Przesuń suwak (okno 12m)")
 
-    # 3. Definicja smart_label PRZED użyciem w suwaku
     def smart_label(date):
-        # Wyświetlamy napis tylko dla stycznia i lipca, by wymusić pionowe kreski (ticks)
         if date.month == 1:
             return date.strftime('%Y')
         elif date.month == 7:
@@ -57,45 +51,40 @@ if not all_data.empty:
         format_func=smart_label
     )
 
-    # Obliczanie okna 12m
     start_view = selected_end - timedelta(days=365)
-    
     fig = go.Figure()
+    
+    # Lista do rankingu
+    performance_results = []
 
     for ticker in tickers:
         try:
-            # Pobranie serii dla konkretnego tickera
-            if len(tickers) > 1:
-                series = all_data['Close'][ticker].dropna()
-            else:
-                series = all_data['Close'].dropna()
-            
-            # Filtrowanie danych do wybranego okna
+            series = all_data['Close'][ticker].dropna()
             mask = (series.index >= pd.Timestamp(start_view)) & (series.index <= pd.Timestamp(selected_end))
             window_data = series.loc[mask]
             
             if not window_data.empty:
-                # Filtr pików (błędnych danych)
-                diff = window_data.pct_change().abs()
-                window_data = window_data[diff < 0.3]
-                
-                # Przeliczenie na zwrot % od zera na początku okna
                 base_price = float(window_data.iloc[0])
-                returns = ((window_data / base_price) - 1) * 100
+                current_return = ((window_data.iloc[-1] / base_price) - 1) * 100
+                returns_series = ((window_data / base_price) - 1) * 100
                 
-                # Dodanie czystej, pogrubionej linii
+                performance_results.append({
+                    "Ticker": ticker,
+                    "Nazwa": asset_names.get(ticker, ticker),
+                    "Wynik %": round(current_return, 2)
+                })
+                
                 fig.add_trace(go.Scatter(
                     x=window_data.index, 
-                    y=returns, 
+                    y=returns_series, 
                     mode='lines', 
-                    name=f"{ticker} - {asset_names.get(ticker, '')}",
+                    name=f"{ticker}",
                     line=dict(width=3),
-                    hovertemplate='%{y:.2f}%'
+                    hovertemplate='<b>' + ticker + '</b><br>Wynik: %{y:.2f}%'
                 ))
         except:
             continue
 
-    # Ustawienia wykresu
     fig.update_layout(
         template="plotly_dark",
         height=600,
@@ -105,11 +94,13 @@ if not all_data.empty:
         legend=dict(orientation="h", yanchor="bottom", y=1.05, xanchor="center", x=0.5)
     )
     
-    # Dodanie linii bazowej 0%
     fig.add_hline(y=0, line_dash="dash", line_color="gray")
-
     st.plotly_chart(fig, use_container_width=True)
-    st.info(f"Aktualny zakres: {start_view.strftime('%d.%m.%Y')} — {selected_end.strftime('%d.%m.%Y')}")
+
+    # Ranking pod wykresem
+    st.write("### 🏆 Ranking wyników w tym oknie")
+    df_perf = pd.DataFrame(performance_results).sort_values(by="Wynik %", ascending=False)
+    st.table(df_perf)
 
 else:
-    st.error("Nie udało się pobrać danych.")
+    st.error("Błąd pobierania danych.")
