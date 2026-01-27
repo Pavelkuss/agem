@@ -7,13 +7,6 @@ import pandas as pd
 st.set_page_config(page_title="Monitor Trendu ETF", layout="wide")
 st.title("📈 Analiza Trendu (Okno 12m)")
 
-def smart_label(date):
-    if date.month == 1:
-        return date.strftime('%Y')
-    elif date.month == 7:
-        return date.strftime('%m/%y')
-    return ""
-
 @st.cache_data(ttl=86400)
 def get_ticker_names(ticker_list):
     names = {}
@@ -31,6 +24,7 @@ def get_data(tickers, start):
     data = yf.download(tickers, start=start, multi_level_index=False, progress=False)['Close']
     return data
 
+# Konfiguracja danych
 tickers = ["EIMI.L", "SWDA.L", "CBU0.L", "IB01.L", "CNDX.L", "SXRT.DE"]
 start_download = datetime.now() - timedelta(days=5*365)
 
@@ -39,17 +33,28 @@ with st.spinner('Pobieranie danych...'):
     asset_names = get_ticker_names(tickers)
 
 if not all_data.empty:
+    # 1. PRZYGOTOWANIE WYBORU DATY (Zamiast suwaka)
     month_ends = pd.date_range(start=all_data.index.min(), end=all_data.index.max(), freq='ME')
-
-    st.write("### Przesuń suwak (okno 12m)")
-    selected_end = st.select_slider(
-        "Wybierz miesiąc końcowy wykresu:",
-        options=month_ends,
-        value=month_ends[-1],
-        format_func=smart_label
+    
+    st.write("### Wybierz miesiąc końcowy analizy:")
+    
+    # Tworzymy czytelne etykiety dla listy: "Styczeń 2024" itp.
+    polish_months = {1:"Styczeń", 2:"Luty", 3:"Marzec", 4:"Kwiecień", 5:"Maj", 6:"Czerwiec", 
+                     7:"Lipiec", 8:"Sierpień", 9:"Wrzesień", 10:"Październik", 11:"Listopad", 12:"Grudzień"}
+    
+    date_options = {d: f"{polish_months[d.month]} {d.year}" for d in month_ends}
+    
+    # Lista rozwijana (Selectbox)
+    selected_end = st.selectbox(
+        "Miesiąc końcowy okna 12m:",
+        options=list(date_options.keys()),
+        index=len(month_ends)-1,
+        format_func=lambda x: date_options[x]
     )
 
     start_view = selected_end - timedelta(days=365)
+    
+    # 2. WYKRES
     fig = go.Figure()
     performance_results = []
 
@@ -65,12 +70,8 @@ if not all_data.empty:
                 returns_series = ((window_data / base_price) - 1) * 100
                 
                 fig.add_trace(go.Scatter(
-                    x=window_data.index, 
-                    y=returns_series, 
-                    mode='lines', 
-                    name=ticker,
-                    line=dict(width=3),
-                    hovertemplate='<b>' + ticker + '</b><br>Wynik: %{y:.2f}%'
+                    x=window_data.index, y=returns_series, mode='lines', 
+                    name=ticker, line=dict(width=3)
                 ))
                 
                 performance_results.append({
@@ -80,44 +81,38 @@ if not all_data.empty:
                 })
 
     fig.update_layout(
-        template="plotly_dark",
-        height=600,
+        template="plotly_dark", height=500,
         xaxis=dict(gridcolor='rgba(255,255,255,0.1)', range=[start_view, selected_end]),
         yaxis=dict(ticksuffix="%", gridcolor='rgba(255,255,255,0.1)'),
         hovermode="x unified",
         legend=dict(orientation="h", yanchor="bottom", y=1.05, xanchor="center", x=0.5)
     )
-    
     fig.add_hline(y=0, line_dash="dash", line_color="gray")
     st.plotly_chart(fig, use_container_width=True)
 
- # --- Sekcja wycentrowanego Rankingu (Zoptymalizowana pod Mobile) ---
+    # 3. RANKING (Wyjustowany i czytelny na mobile)
     if performance_results:
-        df_perf = pd.DataFrame(performance_results).sort_values(by="Wynik %", ascending=False)
-        
-        # Wymuszenie zawijania tekstu w tabeli (CSS dla urządzeń mobilnych)
         st.markdown("""
             <style>
-                table {
-                    width: 100%;
+                table { width: 100%; border-collapse: collapse; }
+                th, td { 
+                    white-space: normal !important; 
+                    word-wrap: break-word !important; 
+                    padding: 8px !important;
+                    text-align: left !important;
                 }
-                th, td {
-                    white-space: normal !important;
-                    word-wrap: break-word !important;
-                    max-width: 150px;
-                }
+                .centered-title { text-align: center; margin-top: 20px; }
             </style>
         """, unsafe_allow_html=True)
 
-        # Wyśrodkowany tytuł i tabela
-        col1, col2, col3 = st.columns([0.2, 3, 0.2]) # Węższe marginesy dla lepszego wykorzystania miejsca
-        
+        df_perf = pd.DataFrame(performance_results).sort_values(by="Wynik %", ascending=False)
+        df_perf["Wynik %"] = df_perf["Wynik %"].apply(lambda x: f"{x:+.2f}%")
+
+        # Centrowanie kontenera tabeli
+        col1, col2, col3 = st.columns([0.1, 4, 0.1])
         with col2:
-            st.markdown(f"#### 🏆 Ranking za okres: {start_view.strftime('%m/%Y')} – {selected_end.strftime('%m/%Y')}")
-            
-            # Używamy st.table zamiast st.dataframe - lepiej dopasowuje się do treści i nie ma suwaków
-            # Formatujemy wynik % jako tekst, aby st.table ładnie go wyświetliło
-            df_display = df_perf.copy()
-            df_display["Wynik %"] = df_display["Wynik %"].apply(lambda x: f"{x:.2f}%")
-            
-            st.table(df_display)
+            st.markdown(f"<h4 class='centered-title'>🏆 Ranking: {selected_end.strftime('%m/%Y')} (12m)</h4>", unsafe_allow_html=True)
+            st.table(df_perf)
+
+else:
+    st.error("Błąd ładowania danych.")
