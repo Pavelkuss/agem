@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 import pandas as pd
 
 st.set_page_config(page_title="Monitor Trendu ETF (EUR)", layout="wide")
-st.title("📈 Analiza Trendu (Okno 12m) - Baza: EUR")
+st.title("📈 Analiza Trendu (Okno 12m) - Waluta: EUR")
 
 @st.cache_data(ttl=86400)
 def get_ticker_names(ticker_list):
@@ -25,7 +25,6 @@ def get_data_safe(tickers, start):
     failed = []
     for t in tickers:
         try:
-            # Pobieramy Close - najbardziej stabilne dla Yahoo
             df = yf.download(t, start=start, progress=False, multi_level_index=False)
             if not df.empty and 'Close' in df.columns:
                 combined[t] = df['Close']
@@ -35,24 +34,22 @@ def get_data_safe(tickers, start):
             failed.append(t)
     return combined, failed
 
-# OCZYSZCZONA LISTA (Bez CBU0.DE i IB01.DE)
-# VGEA.DE to stabilny zamiennik na obligacje EUR 7-10y od Vanguard
-tickers = ["IWDA.AS", "IS3N.DE", "SXRV.DE", "SXRT.DE", "VGEA.DE"]
+# LISTA: IS3N (EM), SXRV (Nasdaq), SXRT (Stoxx50), VGEA (Bonds EUR 7-10y), IUS7.DE (Bonds USA 7-10y)
+tickers = ["IS3N.DE", "SXRV.DE", "SXRT.DE", "VGEA.DE", "IUS7.DE"]
 start_download = datetime.now() - timedelta(days=5*365)
 
-with st.spinner('Pobieranie danych rynkowych...'):
+with st.spinner('Aktualizacja danych...'):
     all_data, failed_tickers = get_data_safe(tickers, start_download)
     asset_names = get_ticker_names(tickers)
 
 if failed_tickers:
-    st.warning(f"⚠️ Nie udało się pobrać: {', '.join(failed_tickers)}. Spróbuj odświeżyć (R).")
+    st.warning(f"⚠️ Problem z tickerami: {', '.join(failed_tickers)}")
 
 if not all_data.empty:
     month_ends = pd.date_range(start=all_data.index.min(), end=all_data.index.max(), freq='ME')[::-1]
+    date_options = {d: f"{d.strftime('%m/%Y')}" for d in month_ends}
     
-    date_options = {d: f"{d.strftime('%m/%Y')}" for d in month_ends} # Krótszy format daty dla mobile
-    
-    selected_end = st.selectbox("Wybierz miesiąc końcowy:", options=list(date_options.keys()), format_func=lambda x: date_options[x])
+    selected_end = st.selectbox("Miesiąc końcowy:", options=list(date_options.keys()), format_func=lambda x: date_options[x])
 
     start_view = selected_end - timedelta(days=365)
     fig = go.Figure()
@@ -92,5 +89,5 @@ if not all_data.empty:
         
         col1, col2, col3 = st.columns([0.1, 4, 0.1])
         with col2:
-            st.markdown(f"<h4 style='text-align: center;'>🏆 Ranking: {selected_end.strftime('%m/%Y')}</h4>", unsafe_allow_html=True)
+            st.markdown(f"<h4 style='text-align: center;'>🏆 Ranking: {selected_end.strftime('%m/%Y')} (12m)</h4>", unsafe_allow_html=True)
             st.table(df_perf)
