@@ -26,7 +26,7 @@ def get_data(tickers, start):
     return data
 
 # LISTA TICKERÓW W EUR
-tickers = ["IWDA.AS", "IS3N.DE", "SXRV.DE", "SXRT.DE", "CBU0.DE", "IB01.DE"]
+tickers = ["IWDA.AS", "IS3N.DE", "SXRV.DE", "SXRT.DE", "SXRM.DE", "IB01.DE"]
 start_download = datetime.now() - timedelta(days=5*365)
 
 with st.spinner('Pobieranie danych w EUR...'):
@@ -104,3 +104,4 @@ if not all_data.empty:
             st.table(df_perf)
 else:
     st.error("Problem z pobraniem danych w EUR. Spróbuj za chwilę.")
+
