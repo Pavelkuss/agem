@@ -4,8 +4,8 @@ import plotly.graph_objects as go
 from datetime import datetime, timedelta
 import pandas as pd
 
-st.set_page_config(page_title="Monitor Trendu ETF", layout="wide")
-st.title("📈 Analiza Trendu (Okno 12m)")
+st.set_page_config(page_title="Monitor Trendu ETF (EUR)", layout="wide")
+st.title("📈 Analiza Trendu (Okno 12m) - Baza: EUR")
 
 @st.cache_data(ttl=86400)
 def get_ticker_names(ticker_list):
@@ -21,39 +21,36 @@ def get_ticker_names(ticker_list):
 
 @st.cache_data(ttl=3600)
 def get_data(tickers, start):
+    # Pobieramy ceny zamknięcia w EUR
     data = yf.download(tickers, start=start, multi_level_index=False, progress=False)['Close']
     return data
 
-# Konfiguracja danych
-tickers = ["EIMI.L", "SWDA.L", "CBU0.L", "IB01.L", "CNDX.L", "SXRT.DE"]
+# LISTA TICKERÓW W EUR
+tickers = ["IWDA.AS", "IS3N.DE", "SXRV.DE", "SXRT.DE", "CBU0.DE", "IB01.DE"]
 start_download = datetime.now() - timedelta(days=5*365)
 
-with st.spinner('Pobieranie danych...'):
+with st.spinner('Pobieranie danych w EUR...'):
     all_data = get_data(tickers, start_download)
     asset_names = get_ticker_names(tickers)
 
 if not all_data.empty:
-    # 1. PRZYGOTOWANIE WYBORU DATY (OD NAJNOWSZEJ DO NAJSTARSZEJ)
-    # Generujemy daty i odwracamy je za pomocą [::-1]
     month_ends = pd.date_range(start=all_data.index.min(), end=all_data.index.max(), freq='ME')[::-1]
     
-    st.write("### Wybierz miesiąc końcowy analizy:")
-    
+    st.write("### Wybierz miesiąc końcowy (Ranking w EUR):")
     polish_months = {1:"Styczeń", 2:"Luty", 3:"Marzec", 4:"Kwiecień", 5:"Maj", 6:"Czerwiec", 
                      7:"Lipiec", 8:"Sierpień", 9:"Wrzesień", 10:"Październik", 11:"Listopad", 12:"Grudzień"}
     
     date_options = {d: f"{polish_months[d.month]} {d.year}" for d in month_ends}
     
     selected_end = st.selectbox(
-        "Miesiąc końcowy okna 12m:",
+        "Miesiąc końcowy:",
         options=list(date_options.keys()),
-        index=0, # Ustawiamy domyślnie na pierwszą pozycję (teraz najnowszą)
+        index=0,
         format_func=lambda x: date_options[x]
     )
 
     start_view = selected_end - timedelta(days=365)
     
-    # 2. WYKRES
     fig = go.Figure()
     performance_results = []
 
@@ -89,17 +86,11 @@ if not all_data.empty:
     fig.add_hline(y=0, line_dash="dash", line_color="gray")
     st.plotly_chart(fig, use_container_width=True)
 
-    # 3. RANKING
     if performance_results:
         st.markdown("""
             <style>
                 table { width: 100%; border-collapse: collapse; }
-                th, td { 
-                    white-space: normal !important; 
-                    word-wrap: break-word !important; 
-                    padding: 8px !important;
-                    text-align: left !important;
-                }
+                th, td { white-space: normal !important; word-wrap: break-word !important; padding: 8px !important; text-align: left !important; }
                 .centered-title { text-align: center; margin-top: 20px; }
             </style>
         """, unsafe_allow_html=True)
@@ -109,7 +100,7 @@ if not all_data.empty:
 
         col1, col2, col3 = st.columns([0.1, 4, 0.1])
         with col2:
-            st.markdown(f"<h4 class='centered-title'>🏆 Ranking: {selected_end.strftime('%m/%Y')} (12m)</h4>", unsafe_allow_html=True)
+            st.markdown(f"<h4 class='centered-title'>🏆 Ranking w EUR: {selected_end.strftime('%m/%Y')}</h4>", unsafe_allow_html=True)
             st.table(df_perf)
 else:
-    st.error("Błąd ładowania danych.")
+    st.error("Problem z pobraniem danych w EUR. Spróbuj za chwilę.")
