@@ -21,19 +21,21 @@ def get_ticker_names(ticker_list):
 
 @st.cache_data(ttl=3600)
 def get_data(tickers, start):
-    # Pobieramy ceny zamknięcia w EUR
     data = yf.download(tickers, start=start, multi_level_index=False, progress=False)['Close']
     return data
 
-# LISTA TICKERÓW W EUR
-tickers = ["IWDA.AS", "IS3N.DE", "SXRV.DE", "SXRT.DE", "SXRM.DE", "IB01.DE"]
+# LISTA TICKERÓW (Wszystkie w EUR dla pełnej spójności)
+# IWDA.AS - World, IS3N.DE - EM, SXRV.DE - Nasdaq100, SXRT.DE - Stoxx50
+# CBU0.DE - USA Bonds 7-10y, IBGL.DE - Euro Bonds 7-10y (NOWY), IB01.DE - Cash/Bonds 0-1y
+tickers = ["IWDA.AS", "IS3N.DE", "SXRV.DE", "SXRT.DE", "CBU0.DE", "IBGL.DE", "IB01.DE"]
 start_download = datetime.now() - timedelta(days=5*365)
 
-with st.spinner('Pobieranie danych w EUR...'):
+with st.spinner('Aktualizacja danych rynkowych w EUR...'):
     all_data = get_data(tickers, start_download)
     asset_names = get_ticker_names(tickers)
 
 if not all_data.empty:
+    # Wybór daty od najnowszej
     month_ends = pd.date_range(start=all_data.index.min(), end=all_data.index.max(), freq='ME')[::-1]
     
     st.write("### Wybierz miesiąc końcowy (Ranking w EUR):")
@@ -43,7 +45,7 @@ if not all_data.empty:
     date_options = {d: f"{polish_months[d.month]} {d.year}" for d in month_ends}
     
     selected_end = st.selectbox(
-        "Miesiąc końcowy:",
+        "Miesiąc końcowy okna 12m:",
         options=list(date_options.keys()),
         index=0,
         format_func=lambda x: date_options[x]
@@ -86,6 +88,7 @@ if not all_data.empty:
     fig.add_hline(y=0, line_dash="dash", line_color="gray")
     st.plotly_chart(fig, use_container_width=True)
 
+    # Stylizacja tabeli (Mobile-Friendly)
     if performance_results:
         st.markdown("""
             <style>
@@ -100,8 +103,7 @@ if not all_data.empty:
 
         col1, col2, col3 = st.columns([0.1, 4, 0.1])
         with col2:
-            st.markdown(f"<h4 class='centered-title'>🏆 Ranking w EUR: {selected_end.strftime('%m/%Y')}</h4>", unsafe_allow_html=True)
+            st.markdown(f"<h4 class='centered-title'>🏆 Ranking w EUR: {selected_end.strftime('%m/%Y')} (12m)</h4>", unsafe_allow_html=True)
             st.table(df_perf)
 else:
-    st.error("Problem z pobraniem danych w EUR. Spróbuj za chwilę.")
-
+    st.error("Wystąpił problem z dostępem do danych. Spróbuj odświeżyć stronę.")
