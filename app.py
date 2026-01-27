@@ -31,16 +31,11 @@ def get_data_safe(tickers, start):
             continue
     return combined.dropna()
 
-# TWOJE AKTUALNE TICKERY
+# KONFIGURACJA
 tickers = ["IS3N.DE", "SXRV.DE", "SXRT.DE", "2B7S.DE", "DBXP.DE"]
-
-# 1. TRWAŁE PRZYPISANIE KOLORÓW
 color_map = {
-    "IS3N.DE": "#E41A1C", # Czerwony
-    "SXRV.DE": "#4DAF4A", # Zielony
-    "SXRT.DE": "#984EA3", # Fioletowy
-    "2B7S.DE": "#FF7F00", # Pomarańczowy
-    "DBXP.DE": "#377EB8"  # Niebieski
+    "IS3N.DE": "#E41A1C", "SXRV.DE": "#4DAF4A", 
+    "SXRT.DE": "#984EA3", "2B7S.DE": "#FF7F00", "DBXP.DE": "#377EB8"
 }
 
 start_download = datetime.now() - timedelta(days=5*365)
@@ -52,7 +47,6 @@ with st.spinner('Synchronizacja danych...'):
 if not all_data.empty:
     month_ends = pd.date_range(start=all_data.index.min(), end=all_data.index.max(), freq='ME')[::-1]
     date_options = {d: f"{d.strftime('%m.%Y')}" for d in month_ends}
-    
     selected_end = st.selectbox("Miesiąc końcowy:", options=list(date_options.keys()), format_func=lambda x: date_options[x])
 
     mask_month = (all_data.index <= pd.Timestamp(selected_end))
@@ -61,68 +55,60 @@ if not all_data.empty:
     
     window_data = all_data.loc[(all_data.index >= pd.Timestamp(start_view)) & (all_data.index <= actual_end_date)]
 
-    # Przygotowanie wyników do sortowania legendy
+    # Przygotowanie danych do głównego wykresu i rankingu
     performance_list = []
     for ticker in tickers:
         if ticker in window_data.columns:
             series = window_data[ticker]
-            base_price = float(series.iloc[0])
-            current_return = ((series.iloc[-1] / base_price) - 1) * 100
-            performance_list.append({
-                "ticker": ticker,
-                "return": current_return,
-                "series": series
-            })
+            ret = ((series.iloc[-1] / series.iloc[0]) - 1) * 100
+            performance_list.append({'ticker': ticker, 'return': ret, 'series': series})
 
-    # 2. SORTOWANIE LISTY WEDŁUG ZWROTU (DLA LEGENDY)
+    # Sortowanie legendy od najlepszego
     performance_list = sorted(performance_list, key=lambda x: x['return'], reverse=True)
 
-    fig = go.Figure()
-    performance_results = []
-
+    # 1. WYKRES LINIOWY (Trend skumulowany)
+    fig_line = go.Figure()
     for item in performance_list:
-        t = item['ticker']
-        s = item['series']
-        ret = item['return']
-        base_p = float(s.iloc[0])
-        returns_series = ((s / base_p) - 1) * 100
-        
-        fig.add_trace(go.Scatter(
-            x=s.index, 
-            y=returns_series, 
-            mode='lines', 
-            name=t, 
-            line=dict(width=3, color=color_map.get(t, "white"))
-        ))
-        
-        performance_results.append({
-            "Ticker": t, 
-            "Nazwa": asset_names.get(t, t), 
-            "Wynik %": round(ret, 2)
-        })
+        t, s, color = item['ticker'], item['series'], color_map.get(item['ticker'])
+        fig_line.add_trace(go.Scatter(x=s.index, y=((s/s.iloc[0])-1)*100, mode='lines', name=t, line=dict(width=3, color=color)))
 
-    fig.update_layout(
-        template="plotly_dark", height=500,
-        xaxis=dict(gridcolor='rgba(255,255,255,0.1)', tickformat="%m.%Y", dtick="M1"),
-        yaxis=dict(ticksuffix="%", gridcolor='rgba(255,255,255,0.1)'),
-        hovermode="x unified",
-        legend=dict(
-            orientation="h", 
-            yanchor="bottom", y=1.05, 
-            xanchor="center", x=0.5,
-            traceorder="normal" # Legenda podąża za kolejnością dodawania trace'ów
-        )
+    fig_line.update_layout(template="plotly_dark", height=450, xaxis=dict(tickformat="%m.%Y", dtick="M1"),
+                           yaxis=dict(ticksuffix="%"), hovermode="x unified",
+                           legend=dict(orientation="h", yanchor="bottom", y=1.05, xanchor="center", x=0.5))
+    st.plotly_chart(fig_line, use_container_width=True)
+
+    # 2. TABELA RANKINGOWA
+    df_perf = pd.DataFrame([{"Ticker": i['ticker'], "Nazwa": asset_names.get(i['ticker']), "Wynik %": f"{i['return']:+.2f}%"} for i in performance_list])
+    col1, col2, col3 = st.columns([0.1, 4, 0.1])
+    with col2:
+        st.markdown(f"<h4 style='text-align: center;'>🏆 Ranking końcowy: {actual_end_date.strftime('%d.%m.%Y')}</h4>", unsafe_allow_html=True)
+        st.table(df_perf)
+
+    # 3. WYKRES MIESIĘCZNY (Momentum)
+    st.markdown("---")
+    st.markdown("<h4 style='text-align: center;'>📊 Miesięczne stopy zwrotu w analizowanym okresie</h4>", unsafe_allow_html=True)
+    
+    # Obliczanie stóp miesięcznych
+    monthly_data = window_data.resample('ME').last()
+    monthly_returns = monthly_data.pct_change().dropna() * 100
+
+    fig_bar = go.Figure()
+    for ticker in [i['ticker'] for i in performance_list]: # Kolejność zgodna z rankingiem
+        if ticker in monthly_returns.columns:
+            fig_bar.add_trace(go.Bar(
+                x=monthly_returns.index.strftime('%m.%Y'),
+                y=monthly_returns[ticker],
+                name=ticker,
+                marker_color=color_map.get(ticker)
+            ))
+
+    fig_bar.update_layout(
+        template="plotly_dark", height=400, barmode='group',
+        xaxis=dict(title="Miesiąc"), yaxis=dict(title="Zwrot %", ticksuffix="%"),
+        legend=dict(orientation="h", yanchor="bottom", y=1.05, xanchor="center", x=0.5),
+        hovermode="x unified"
     )
-    fig.add_hline(y=0, line_dash="dash", line_color="gray")
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig_bar, use_container_width=True)
 
-    if performance_results:
-        st.markdown("<style>table {width: 100%;} td {white-space: normal !important; word-wrap: break-word !important;}</style>", unsafe_allow_html=True)
-        # Tabela zawsze posortowana od najlepszego (już jest dzięki kolejności dodawania)
-        df_perf = pd.DataFrame(performance_results)
-        df_perf["Wynik %"] = df_perf["Wynik %"].apply(lambda x: f"{x:+.2f}%")
-        
-        col1, col2, col3 = st.columns([0.1, 4, 0.1])
-        with col2:
-            st.markdown(f"<h4 style='text-align: center;'>🏆 Ranking (stan na {actual_end_date.strftime('%d.%m.%Y')}):</h4>", unsafe_allow_html=True)
-            st.table(df_perf)
+else:
+    st.error("Błąd pobierania danych. Wyczyść cache.")
