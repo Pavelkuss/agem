@@ -91,23 +91,33 @@ if not all_data.empty:
     fig.add_hline(y=0, line_dash="dash", line_color="gray")
     st.plotly_chart(fig, use_container_width=True)
 
-    # --- Sekcja wycentrowanego Rankingu ---
+ # --- Sekcja wycentrowanego Rankingu (Zoptymalizowana pod Mobile) ---
     if performance_results:
         df_perf = pd.DataFrame(performance_results).sort_values(by="Wynik %", ascending=False)
         
-        # Tworzymy kolumny: lewa pusta, środek na ranking, prawa pusta
-        col1, col2, col3 = st.columns([0.5, 3, 0.5])
+        # Wymuszenie zawijania tekstu w tabeli (CSS dla urządzeń mobilnych)
+        st.markdown("""
+            <style>
+                table {
+                    width: 100%;
+                }
+                th, td {
+                    white-space: normal !important;
+                    word-wrap: break-word !important;
+                    max-width: 150px;
+                }
+            </style>
+        """, unsafe_allow_html=True)
+
+        # Wyśrodkowany tytuł i tabela
+        col1, col2, col3 = st.columns([0.2, 3, 0.2]) # Węższe marginesy dla lepszego wykorzystania miejsca
         
         with col2:
-            # Tytuł i tabela w jednej kolumnie dla idealnego wyjustowania
             st.markdown(f"#### 🏆 Ranking za okres: {start_view.strftime('%m/%Y')} – {selected_end.strftime('%m/%Y')}")
-            st.dataframe(
-                df_perf, 
-                use_container_width=True, 
-                hide_index=True,
-                column_config={
-                    "Wynik %": st.column_config.NumberColumn(format="%.2f%%")
-                }
-            )
-else:
-    st.error("Nie udało się pobrać danych.")
+            
+            # Używamy st.table zamiast st.dataframe - lepiej dopasowuje się do treści i nie ma suwaków
+            # Formatujemy wynik % jako tekst, aby st.table ładnie go wyświetliło
+            df_display = df_perf.copy()
+            df_display["Wynik %"] = df_display["Wynik %"].apply(lambda x: f"{x:.2f}%")
+            
+            st.table(df_display)
