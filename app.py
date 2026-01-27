@@ -32,7 +32,7 @@ def get_data_safe(tickers, start):
     # SYNCHRONIZACJA: Usuwamy dni, w których brakuje choćby jednej ceny (rozwiązuje problem z obrazka)
     return combined.dropna()
 
-tickers = ["IS3N.DE", "SXRV.DE", "SXRT.DE", "IS0F.DE", "DBXP.DE"]
+tickers = ["IS3N.DE", "SXRV.DE", "SXRT.DE", "2B7S.DE", "DBXP.DE"]
 start_download = datetime.now() - timedelta(days=5*365)
 
 with st.spinner('Synchronizacja danych...'):
@@ -88,6 +88,7 @@ if not all_data.empty:
         with col2:
             st.markdown(f"<h4 style='text-align: center;'>🏆 Ranking (stan na {actual_end_date.strftime('%d.%m.%Y')}):</h4>", unsafe_allow_html=True)
             st.table(df_perf)
+
 
 
 
