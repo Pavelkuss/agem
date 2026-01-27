@@ -22,30 +22,23 @@ def get_ticker_names(ticker_list):
 @st.cache_data(ttl=3600)
 def get_data_safe(tickers, start):
     combined = pd.DataFrame()
-    failed = []
     for t in tickers:
         try:
             df = yf.download(t, start=start, progress=False, multi_level_index=False)
             if not df.empty and 'Close' in df.columns:
                 combined[t] = df['Close']
-            else:
-                failed.append(t)
         except:
-            failed.append(t)
-    return combined, failed
+            continue
+    # KLUCZOWA POPRAWKA: Usuwamy wiersze, gdzie brakuje choćby jednego waloru (wyrównanie końcówki)
+    return combined.dropna()
 
 # LISTA ACCUMULATING W EUR:
-# IS3N.DE - EM (Acc), SXRV.DE - Nasdaq (Acc), SXRT.DE - Stoxx50 (Acc)
-# VGEA.DE - Euro Bonds 7-10y (Acc), SXRQ.DE - USA Bonds 7-10y EUR Hedged (Acc)
 tickers = ["IS3N.DE", "SXRV.DE", "SXRT.DE", "VGEA.DE", "SXRQ.DE"]
 start_download = datetime.now() - timedelta(days=5*365)
 
-with st.spinner('Aktualizacja danych (Wersje Accumulating)...'):
-    all_data, failed_tickers = get_data_safe(tickers, start_download)
+with st.spinner('Synchronizacja danych rynkowych...'):
+    all_data = get_data_safe(tickers, start_download)
     asset_names = get_ticker_names(tickers)
-
-if failed_tickers:
-    st.warning(f"⚠️ Nie udało się pobrać: {', '.join(failed_tickers)}")
 
 if not all_data.empty:
     month_ends = pd.date_range(start=all_data.index.min(), end=all_data.index.max(), freq='ME')[::-1]
@@ -53,21 +46,25 @@ if not all_data.empty:
     
     selected_end = st.selectbox("Miesiąc końcowy:", options=list(date_options.keys()), format_func=lambda x: date_options[x])
 
-    start_view = selected_end - timedelta(days=365)
+    # Ustalamy faktyczną ostatnią datę dostępną w zbiorze dla wybranego miesiąca
+    mask_month = (all_data.index <= pd.Timestamp(selected_end))
+    actual_end_date = all_data.index[mask_month][-1]
+    start_view = actual_end_date - timedelta(days=365)
+    
     fig = go.Figure()
     performance_results = []
 
-    for ticker in all_data.columns:
-        series = all_data[ticker].dropna()
-        mask = (series.index >= pd.Timestamp(start_view)) & (series.index <= pd.Timestamp(selected_end))
-        window_data = series.loc[mask]
-        
-        if not window_data.empty:
-            base_price = float(window_data.iloc[0])
-            current_return = ((window_data.iloc[-1] / base_price) - 1) * 100
-            returns_series = ((window_data / base_price) - 1) * 100
+    # Pobieramy dane dla okna
+    window_data = all_data.loc[(all_data.index >= pd.Timestamp(start_view)) & (all_data.index <= actual_end_date)]
+
+    for ticker in tickers:
+        if ticker in window_data.columns:
+            series = window_data[ticker]
+            base_price = float(series.iloc[0])
+            current_return = ((series.iloc[-1] / base_price) - 1) * 100
+            returns_series = ((series / base_price) - 1) * 100
             
-            fig.add_trace(go.Scatter(x=window_data.index, y=returns_series, mode='lines', name=ticker, line=dict(width=3)))
+            fig.add_trace(go.Scatter(x=series.index, y=returns_series, mode='lines', name=ticker, line=dict(width=3)))
             performance_results.append({
                 "Ticker": ticker, 
                 "Nazwa": asset_names.get(ticker, ticker), 
@@ -76,7 +73,7 @@ if not all_data.empty:
 
     fig.update_layout(
         template="plotly_dark", height=500,
-        xaxis=dict(gridcolor='rgba(255,255,255,0.1)', range=[start_view, selected_end]),
+        xaxis=dict(gridcolor='rgba(255,255,255,0.1)'),
         yaxis=dict(ticksuffix="%", gridcolor='rgba(255,255,255,0.1)'),
         hovermode="x unified",
         legend=dict(orientation="h", yanchor="bottom", y=1.05, xanchor="center", x=0.5)
@@ -91,5 +88,7 @@ if not all_data.empty:
         
         col1, col2, col3 = st.columns([0.1, 4, 0.1])
         with col2:
-            st.markdown(f"<h4 style='text-align: center;'>🏆 Ranking Acc (EUR): {selected_end.strftime('%m/%Y')}</h4>", unsafe_allow_html=True)
+            st.markdown(f"<h4 style='text-align: center;'>🏆 Ranking (stan na {actual_end_date.strftime('%d.%m.%Y')}):</h4>", unsafe_allow_html=True)
             st.table(df_perf)
+else:
+    st.error("Błąd synchronizacji danych. Spróbuj wyczyścić cache.")
