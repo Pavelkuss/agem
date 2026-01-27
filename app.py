@@ -27,7 +27,7 @@ def get_data(tickers, start):
 # LISTA TICKERÓW (Wszystkie w EUR dla pełnej spójności)
 # IWDA.AS - World, IS3N.DE - EM, SXRV.DE - Nasdaq100, SXRT.DE - Stoxx50
 # CBU0.DE - USA Bonds 7-10y, IBGL.DE - Euro Bonds 7-10y (NOWY), IB01.DE - Cash/Bonds 0-1y
-tickers = ["IWDA.AS", "IS3N.DE", "SXRV.DE", "SXRT.DE", "CBU0.DE", "IBGL.DE", "IB01.DE"]
+tickers = ["IS3N.DE", "SXRV.DE", "SXRT.DE", "CBU0.DE", "IBGL.DE", "IB01.DE"]
 start_download = datetime.now() - timedelta(days=5*365)
 
 with st.spinner('Aktualizacja danych rynkowych w EUR...'):
@@ -107,3 +107,4 @@ if not all_data.empty:
             st.table(df_perf)
 else:
     st.error("Wystąpił problem z dostępem do danych. Spróbuj odświeżyć stronę.")
+
