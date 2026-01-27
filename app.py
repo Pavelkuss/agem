@@ -7,7 +7,6 @@ import pandas as pd
 st.set_page_config(page_title="Monitor Trendu ETF", layout="wide")
 st.title("📈 Analiza Trendu (Okno 12m)")
 
-# 1. Funkcja etykiet suwaka
 def smart_label(date):
     if date.month == 1:
         return date.strftime('%Y')
@@ -29,11 +28,9 @@ def get_ticker_names(ticker_list):
 
 @st.cache_data(ttl=3600)
 def get_data(tickers, start):
-    # Pobieramy ceny zamknięcia - najbardziej stabilna metoda dla Yahoo
     data = yf.download(tickers, start=start, multi_level_index=False, progress=False)['Close']
     return data
 
-# Lista tickerów (stabilne warianty)
 tickers = ["EIMI.L", "SWDA.L", "CBU0.L", "IB01.L", "CNDX.L", "SXRT.DE"]
 start_download = datetime.now() - timedelta(days=5*365)
 
@@ -94,15 +91,16 @@ if not all_data.empty:
     fig.add_hline(y=0, line_dash="dash", line_color="gray")
     st.plotly_chart(fig, use_container_width=True)
 
-    # --- Sekcja Rankingu z poprawionym formatowaniem ---
-    st.write(f"### 🏆 Ranking za okres: {start_view.strftime('%m/%Y')} – {selected_end.strftime('%m/%Y')}")
-    
+    # --- Sekcja wycentrowanego Rankingu ---
     if performance_results:
         df_perf = pd.DataFrame(performance_results).sort_values(by="Wynik %", ascending=False)
         
-        # Używamy kolumn, aby tabela nie rozciągała się na całą stronę
-        col1, col2, col3 = st.columns([1, 2, 1])
+        # Tworzymy kolumny: lewa pusta, środek na ranking, prawa pusta
+        col1, col2, col3 = st.columns([0.5, 3, 0.5])
+        
         with col2:
+            # Tytuł i tabela w jednej kolumnie dla idealnego wyjustowania
+            st.markdown(f"#### 🏆 Ranking za okres: {start_view.strftime('%m/%Y')} – {selected_end.strftime('%m/%Y')}")
             st.dataframe(
                 df_perf, 
                 use_container_width=True, 
@@ -111,6 +109,5 @@ if not all_data.empty:
                     "Wynik %": st.column_config.NumberColumn(format="%.2f%%")
                 }
             )
-
 else:
-    st.error("Nie udało się pobrać danych. Spróbuj odświeżyć stronę.")
+    st.error("Nie udało się pobrać danych.")
