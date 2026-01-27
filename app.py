@@ -90,4 +90,27 @@ if not all_data.empty:
                 performance_results.append({
                     "Ticker": ticker,
                     "Pełna Nazwa": name_in_legend,
-                    "Wynik % (12m)": round(current_
+                    "Wynik % (12m)": round(current_return, 2)
+                })
+
+    fig.update_layout(
+        template="plotly_dark",
+        height=600,
+        xaxis=dict(gridcolor='rgba(255,255,255,0.1)', range=[start_view, selected_end]),
+        yaxis=dict(ticksuffix="%", gridcolor='rgba(255,255,255,0.1)'),
+        hovermode="x unified",
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5)
+    )
+    
+    fig.add_hline(y=0, line_dash="dash", line_color="gray")
+    st.plotly_chart(fig, use_container_width=True)
+
+    # Ranking
+    if performance_results:
+        st.write("### 🏆 Ranking wyników w wybranym oknie")
+        df_perf = pd.DataFrame(performance_results).sort_values(by="Wynik % (12m)", ascending=False)
+        st.table(df_perf)
+
+    st.info(f"Zakres: {start_view.strftime('%d.%m.%Y')} — {selected_end.strftime('%d.%m.%Y')}")
+else:
+    st.error("Błąd pobierania danych. Spróbuj odświeżyć stronę (R).")
