@@ -33,22 +33,21 @@ with st.spinner('Pobieranie danych...'):
     asset_names = get_ticker_names(tickers)
 
 if not all_data.empty:
-    # 1. PRZYGOTOWANIE WYBORU DATY (Zamiast suwaka)
-    month_ends = pd.date_range(start=all_data.index.min(), end=all_data.index.max(), freq='ME')
+    # 1. PRZYGOTOWANIE WYBORU DATY (OD NAJNOWSZEJ DO NAJSTARSZEJ)
+    # Generujemy daty i odwracamy je za pomocą [::-1]
+    month_ends = pd.date_range(start=all_data.index.min(), end=all_data.index.max(), freq='ME')[::-1]
     
     st.write("### Wybierz miesiąc końcowy analizy:")
     
-    # Tworzymy czytelne etykiety dla listy: "Styczeń 2024" itp.
     polish_months = {1:"Styczeń", 2:"Luty", 3:"Marzec", 4:"Kwiecień", 5:"Maj", 6:"Czerwiec", 
                      7:"Lipiec", 8:"Sierpień", 9:"Wrzesień", 10:"Październik", 11:"Listopad", 12:"Grudzień"}
     
     date_options = {d: f"{polish_months[d.month]} {d.year}" for d in month_ends}
     
-    # Lista rozwijana (Selectbox)
     selected_end = st.selectbox(
         "Miesiąc końcowy okna 12m:",
         options=list(date_options.keys()),
-        index=len(month_ends)-1,
+        index=0, # Ustawiamy domyślnie na pierwszą pozycję (teraz najnowszą)
         format_func=lambda x: date_options[x]
     )
 
@@ -90,7 +89,7 @@ if not all_data.empty:
     fig.add_hline(y=0, line_dash="dash", line_color="gray")
     st.plotly_chart(fig, use_container_width=True)
 
-    # 3. RANKING (Wyjustowany i czytelny na mobile)
+    # 3. RANKING
     if performance_results:
         st.markdown("""
             <style>
@@ -108,11 +107,9 @@ if not all_data.empty:
         df_perf = pd.DataFrame(performance_results).sort_values(by="Wynik %", ascending=False)
         df_perf["Wynik %"] = df_perf["Wynik %"].apply(lambda x: f"{x:+.2f}%")
 
-        # Centrowanie kontenera tabeli
         col1, col2, col3 = st.columns([0.1, 4, 0.1])
         with col2:
             st.markdown(f"<h4 class='centered-title'>🏆 Ranking: {selected_end.strftime('%m/%Y')} (12m)</h4>", unsafe_allow_html=True)
             st.table(df_perf)
-
 else:
     st.error("Błąd ładowania danych.")
