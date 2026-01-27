@@ -34,16 +34,18 @@ def get_data_safe(tickers, start):
             failed.append(t)
     return combined, failed
 
-# LISTA: IS3N (EM), SXRV (Nasdaq), SXRT (Stoxx50), VGEA (Bonds EUR 7-10y), IUS7.DE (Bonds USA 7-10y)
-tickers = ["IS3N.DE", "SXRV.DE", "SXRT.DE", "VGEA.DE", "IUS7.DE"]
+# LISTA ACCUMULATING W EUR:
+# IS3N.DE - EM (Acc), SXRV.DE - Nasdaq (Acc), SXRT.DE - Stoxx50 (Acc)
+# VGEA.DE - Euro Bonds 7-10y (Acc), SXRQ.DE - USA Bonds 7-10y EUR Hedged (Acc)
+tickers = ["IS3N.DE", "SXRV.DE", "SXRT.DE", "VGEA.DE", "SXRQ.DE"]
 start_download = datetime.now() - timedelta(days=5*365)
 
-with st.spinner('Aktualizacja danych...'):
+with st.spinner('Aktualizacja danych (Wersje Accumulating)...'):
     all_data, failed_tickers = get_data_safe(tickers, start_download)
     asset_names = get_ticker_names(tickers)
 
 if failed_tickers:
-    st.warning(f"⚠️ Problem z tickerami: {', '.join(failed_tickers)}")
+    st.warning(f"⚠️ Nie udało się pobrać: {', '.join(failed_tickers)}")
 
 if not all_data.empty:
     month_ends = pd.date_range(start=all_data.index.min(), end=all_data.index.max(), freq='ME')[::-1]
@@ -89,5 +91,5 @@ if not all_data.empty:
         
         col1, col2, col3 = st.columns([0.1, 4, 0.1])
         with col2:
-            st.markdown(f"<h4 style='text-align: center;'>🏆 Ranking: {selected_end.strftime('%m/%Y')} (12m)</h4>", unsafe_allow_html=True)
+            st.markdown(f"<h4 style='text-align: center;'>🏆 Ranking Acc (EUR): {selected_end.strftime('%m/%Y')}</h4>", unsafe_allow_html=True)
             st.table(df_perf)
