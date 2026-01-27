@@ -7,7 +7,7 @@ import pandas as pd
 st.set_page_config(page_title="Monitor Trendu ETF", layout="wide")
 st.title("📈 Analiza Trendu (Okno 12m)")
 
-# 1. Definicja etykiet suwaka na samym początku
+# 1. Funkcja etykiet suwaka
 def smart_label(date):
     if date.month == 1:
         return date.strftime('%Y')
@@ -29,11 +29,11 @@ def get_ticker_names(ticker_list):
 
 @st.cache_data(ttl=3600)
 def get_data(tickers, start):
-    # Pobieramy standardowe ceny zamknięcia - najbardziej stabilne
+    # Pobieramy ceny zamknięcia - najbardziej stabilna metoda dla Yahoo
     data = yf.download(tickers, start=start, multi_level_index=False, progress=False)['Close']
     return data
 
-# STABILNE TICKERY (LONDYN/USA)
+# Lista tickerów (stabilne warianty)
 tickers = ["EIMI.L", "SWDA.L", "CBU0.L", "IB01.L", "CNDX.L", "SXRT.DE"]
 start_download = datetime.now() - timedelta(days=5*365)
 
@@ -42,12 +42,11 @@ with st.spinner('Pobieranie danych...'):
     asset_names = get_ticker_names(tickers)
 
 if not all_data.empty:
-    # Generowanie osi czasu dla suwaka
     month_ends = pd.date_range(start=all_data.index.min(), end=all_data.index.max(), freq='ME')
 
     st.write("### Przesuń suwak (okno 12m)")
     selected_end = st.select_slider(
-        "Wybierz miesiąc końcowy:",
+        "Wybierz miesiąc końcowy wykresu:",
         options=month_ends,
         value=month_ends[-1],
         format_func=smart_label
@@ -64,7 +63,6 @@ if not all_data.empty:
             window_data = series.loc[mask]
             
             if not window_data.empty:
-                # Obliczamy zwrot (start okna = 0%)
                 base_price = float(window_data.iloc[0])
                 current_return = ((window_data.iloc[-1] / base_price) - 1) * 100
                 returns_series = ((window_data / base_price) - 1) * 100
@@ -81,7 +79,7 @@ if not all_data.empty:
                 performance_results.append({
                     "Ticker": ticker,
                     "Nazwa": asset_names.get(ticker, ticker),
-                    "Wynik % (12m)": round(current_return, 2)
+                    "Wynik %": round(current_return, 2)
                 })
 
     fig.update_layout(
@@ -96,11 +94,23 @@ if not all_data.empty:
     fig.add_hline(y=0, line_dash="dash", line_color="gray")
     st.plotly_chart(fig, use_container_width=True)
 
-    # Ranking pod wykresem
+    # --- Sekcja Rankingu z poprawionym formatowaniem ---
+    st.write(f"### 🏆 Ranking za okres: {start_view.strftime('%m/%Y')} – {selected_end.strftime('%m/%Y')}")
+    
     if performance_results:
-        st.write("### 🏆 Ranking wyników w tym oknie")
-        df_perf = pd.DataFrame(performance_results).sort_values(by="Wynik % (12m)", ascending=False)
-        st.table(df_perf)
+        df_perf = pd.DataFrame(performance_results).sort_values(by="Wynik %", ascending=False)
+        
+        # Używamy kolumn, aby tabela nie rozciągała się na całą stronę
+        col1, col2, col3 = st.columns([1, 2, 1])
+        with col2:
+            st.dataframe(
+                df_perf, 
+                use_container_width=True, 
+                hide_index=True,
+                column_config={
+                    "Wynik %": st.column_config.NumberColumn(format="%.2f%%")
+                }
+            )
 
 else:
     st.error("Nie udało się pobrać danych. Spróbuj odświeżyć stronę.")
