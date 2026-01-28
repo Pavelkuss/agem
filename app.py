@@ -5,110 +5,87 @@ from datetime import datetime, timedelta
 import pandas as pd
 
 st.set_page_config(page_title="Monitor Trendu ETF (EUR)", layout="wide")
-st.title("📈 Analiza Trendu (Okno 12m) - Waluta: EUR")
 
-@st.cache_data(ttl=86400)
-def get_ticker_names(ticker_list):
-    names = {}
-    for t in ticker_list:
-        try:
-            ticker_obj = yf.Ticker(t)
-            full_name = ticker_obj.info.get('longName') or ticker_obj.info.get('shortName') or t
-            names[t] = full_name
-        except:
-            names[t] = t
-    return names
-
-@st.cache_data(ttl=3600)
-def get_data_safe(tickers, start):
-    combined = pd.DataFrame()
-    for t in tickers:
-        try:
-            df = yf.download(t, start=start, progress=False, multi_level_index=False)
-            if not df.empty and 'Close' in df.columns:
-                combined[t] = df['Close']
-        except:
-            continue
-    return combined.dropna()
-
-# KONFIGURACJA
-tickers = ["IS3N.DE", "SXRV.DE", "SXRT.DE", "2B7S.DE", "DBXP.DE"]
-color_map = {
-    "IS3N.DE": "#E41A1C", "SXRV.DE": "#4DAF4A", 
-    "SXRT.DE": "#984EA3", "2B7S.DE": "#FF7F00", "DBXP.DE": "#377EB8"
+# --- KONFIGURACJA BIBLIOTEKI ETF ---
+# Wybrane fundusze typu Accumulating, notowane na Xetra/Amsterdam w EUR
+etf_library = {
+    "USA (S&P 500 / Nasdaq)": {
+        "SXR8.DE": "iShares Core S&P 500 Acc",
+        "SXRV.DE": "iShares Nasdaq 100 Acc",
+        "SXRQ.DE": "iShares $ Treasury 7-10yr (EUR Hedged) Acc"
+    },
+    "Europa (Stoxx 50 / 600)": {
+        "SXRT.DE": "iShares Core EURO STOXX 50 Acc",
+        "EXSA.DE": "iShares STOXX Europe 600 Acc",
+        "VGEA.DE": "Vanguard EUR Govt Bond Acc"
+    },
+    "Emerging Markets": {
+        "IS3N.DE": "iShares Core MSCI EM IMI Acc",
+        "EIMI.AS": "iShares MSCI EM IMI (Acc) - AMS"
+    },
+    "Obligacje 0-1y (Gotówka/Cash)": {
+        "IB01.DE": "iShares $ Treasury 0-1yr (USD) Acc",
+        "XEON.DE": "Xtrackers II EUR Overnight Rate Swap Acc",
+        "CBU0.DE": "iShares $ Treasury 0-1yr (EUR Hedged) Acc"
+    }
 }
 
-start_download = datetime.now() - timedelta(days=5*365)
+# Mapowanie kolorów dla najpopularniejszych tickerów
+color_map = {
+    "SXRV.DE": "#4DAF4A", "SXRT.DE": "#984EA3", "IS3N.DE": "#E41A1C",
+    "IB01.DE": "#FFFF33", "XEON.DE": "#A65628", "SXR8.DE": "#377EB8",
+    "VGEA.DE": "#FF7F00", "CBU0.DE": "#F781BF"
+}
 
-with st.spinner('Synchronizacja danych...'):
-    all_data = get_data_safe(tickers, start_download)
-    asset_names = get_ticker_names(tickers)
+# --- INTERFEJS UŻYTKOWNIKA ---
+st.sidebar.header("🔍 Wybór Instrumentów")
+selected_tickers = []
+
+for category, items in etf_library.items():
+    st.sidebar.subheader(category)
+    for ticker, name in items.items():
+        if st.sidebar.checkbox(f"{ticker} ({name})", value=(ticker in ["SXRV.DE", "SXRT.DE", "IS3N.DE", "XEON.DE"])):
+            selected_tickers.append(ticker)
+
+# --- LOGIKA POBIERANIA DANYCH ---
+@st.cache_data(ttl=3600)
+def get_data_sync(tickers, start):
+    if not tickers: return pd.DataFrame()
+    combined = pd.DataFrame()
+    for t in tickers:
+        df = yf.download(t, start=start, progress=False, multi_level_index=False)
+        if not df.empty and 'Close' in df.columns:
+            combined[t] = df['Close']
+    return combined.dropna()
+
+start_date = datetime.now() - timedelta(days=5*365)
+all_data = get_data_sync(selected_tickers, start_date)
 
 if not all_data.empty:
+    # Wybór daty i obliczenia (identyczne jak wcześniej)
     month_ends = pd.date_range(start=all_data.index.min(), end=all_data.index.max(), freq='ME')[::-1]
-    date_options = {d: f"{d.strftime('%m.%Y')}" for d in month_ends}
-    selected_end = st.selectbox("Miesiąc końcowy:", options=list(date_options.keys()), format_func=lambda x: date_options[x])
-
-    mask_month = (all_data.index <= pd.Timestamp(selected_end))
-    actual_end_date = all_data.index[mask_month][-1]
-    start_view = actual_end_date - timedelta(days=365)
+    selected_end = st.selectbox("Miesiąc końcowy:", options=list(month_ends), format_func=lambda x: x.strftime('%m.%Y'))
     
-    window_data = all_data.loc[(all_data.index >= pd.Timestamp(start_view)) & (all_data.index <= actual_end_date)]
-
-    # Przygotowanie danych do głównego wykresu i rankingu
-    performance_list = []
-    for ticker in tickers:
-        if ticker in window_data.columns:
-            series = window_data[ticker]
-            ret = ((series.iloc[-1] / series.iloc[0]) - 1) * 100
-            performance_list.append({'ticker': ticker, 'return': ret, 'series': series})
-
-    # Sortowanie legendy od najlepszego
-    performance_list = sorted(performance_list, key=lambda x: x['return'], reverse=True)
-
-    # 1. WYKRES LINIOWY (Trend skumulowany)
-    fig_line = go.Figure()
-    for item in performance_list:
-        t, s, color = item['ticker'], item['series'], color_map.get(item['ticker'])
-        fig_line.add_trace(go.Scatter(x=s.index, y=((s/s.iloc[0])-1)*100, mode='lines', name=t, line=dict(width=3, color=color)))
-
-    fig_line.update_layout(template="plotly_dark", height=450, xaxis=dict(tickformat="%m.%Y", dtick="M1"),
-                           yaxis=dict(ticksuffix="%"), hovermode="x unified",
-                           legend=dict(orientation="h", yanchor="bottom", y=1.05, xanchor="center", x=0.5))
-    st.plotly_chart(fig_line, use_container_width=True)
-
-    # 2. TABELA RANKINGOWA
-    df_perf = pd.DataFrame([{"Ticker": i['ticker'], "Nazwa": asset_names.get(i['ticker']), "Wynik %": f"{i['return']:+.2f}%"} for i in performance_list])
-    col1, col2, col3 = st.columns([0.1, 4, 0.1])
-    with col2:
-        st.markdown(f"<h4 style='text-align: center;'>🏆 Ranking końcowy: {actual_end_date.strftime('%d.%m.%Y')}</h4>", unsafe_allow_html=True)
-        st.table(df_perf)
-
-    # 3. WYKRES MIESIĘCZNY (Momentum)
-    st.markdown("---")
-    st.markdown("<h4 style='text-align: center;'>📊 Miesięczne stopy zwrotu w analizowanym okresie</h4>", unsafe_allow_html=True)
+    actual_end = all_data.index[all_data.index <= pd.Timestamp(selected_end)][-1]
+    start_view = actual_end - timedelta(days=365)
+    window = all_data.loc[start_view:actual_end]
     
-    # Obliczanie stóp miesięcznych
-    monthly_data = window_data.resample('ME').last()
-    monthly_returns = monthly_data.pct_change().dropna() * 100
+    # Ranking i RSI
+    perf = []
+    for t in selected_tickers:
+        if t in window.columns:
+            ret = ((window[t].iloc[-1] / window[t].iloc[0]) - 1) * 100
+            perf.append({'ticker': t, 'return': ret, 'series': window[t]})
+    
+    perf = sorted(perf, key=lambda x: x['return'], reverse=True)
 
-    fig_bar = go.Figure()
-    for ticker in [i['ticker'] for i in performance_list]: # Kolejność zgodna z rankingiem
-        if ticker in monthly_returns.columns:
-            fig_bar.add_trace(go.Bar(
-                x=monthly_returns.index.strftime('%m.%Y'),
-                y=monthly_returns[ticker],
-                name=ticker,
-                marker_color=color_map.get(ticker)
-            ))
+    # Wykres główny
+    fig = go.Figure()
+    for item in perf:
+        fig.add_trace(go.Scatter(x=item['series'].index, y=((item['series']/item['series'].iloc[0])-1)*100, 
+                                 name=item['ticker'], line=dict(width=3, color=color_map.get(item['ticker'], None))))
+    fig.update_layout(template="plotly_dark", height=450, xaxis=dict(tickformat="%m.%Y"), hovermode="x unified")
+    st.plotly_chart(fig, use_container_width=True)
 
-    fig_bar.update_layout(
-        template="plotly_dark", height=400, barmode='group',
-        xaxis=dict(title="Miesiąc"), yaxis=dict(title="Zwrot %", ticksuffix="%"),
-        legend=dict(orientation="h", yanchor="bottom", y=1.05, xanchor="center", x=0.5),
-        hovermode="x unified"
-    )
-    st.plotly_chart(fig_bar, use_container_width=True)
-
-else:
-    st.error("Błąd pobierania danych. Wyczyść cache.")
+    # Tabela
+    st.table(pd.DataFrame([{"Ticker": i['ticker'], "Wynik 12m": f"{i['return']:+.2f}%"} for i in perf]))
