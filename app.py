@@ -84,7 +84,7 @@ if not all_data.empty:
     else:
         st.success(f"SYGNAŁ: INVEST ({best_asset['ticker']}).")
 
-    # --- WYKRES Z WYNIKIEM W LEGENDZIE ---
+# --- UPROSZCZONY WYKRES ---
     fig = go.Figure()
     for item in perf:
         t = item['ticker']
@@ -95,17 +95,36 @@ if not all_data.empty:
             x=item['series'].index, 
             y=((item['series']/item['series'].iloc[0])-1)*100, 
             name=legend_label, 
-            line=dict(width=3, color=color_map.get(t))
+            line=dict(width=3, color=color_map.get(t)),
+            hoverinfo="y+name" # Pokazuje tylko wartość i nazwę przy najechaniu
         ))
     
     fig.update_layout(
-        template="plotly_dark", height=500,
-        xaxis=dict(tickformat="%m.%Y"),
-        yaxis=dict(ticksuffix="%"),
+        template="plotly_dark", 
+        height=500,
+        xaxis=dict(
+            tickformat="%m.%Y", 
+            fixedrange=True, # Blokada zoomu na osi X
+            showgrid=False
+        ),
+        yaxis=dict(
+            ticksuffix="%", 
+            fixedrange=True, # Blokada zoomu na osi Y
+            zeroline=True,
+            zerolinecolor="gray"
+        ),
         hovermode="x unified",
-        legend=dict(orientation="h", y=1.1, xanchor="center", x=0.5)
+        legend=dict(
+            orientation="h", 
+            y=1.1, 
+            xanchor="center", 
+            x=0.5
+        ),
+        margin=dict(l=10, r=10, t=10, b=10) # Usunięcie zbędnych marginesów
     )
-    st.plotly_chart(fig, use_container_width=True)
+
+    # Wyświetlenie wykresu bez paska narzędzi (modebar)
+    st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
 
     # TABELA RANKINGOWA
     st.markdown(f"### 🏆 Szczegółowy ranking ({actual_end.strftime('%d.%m.%Y')})")
@@ -113,3 +132,4 @@ if not all_data.empty:
 
 else:
     st.info("Zaznacz instrumenty w menu bocznym.")
+
