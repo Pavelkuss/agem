@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 import pandas as pd
 
 st.set_page_config(page_title="GEM Monitor (EUR)", layout="wide")
-st.title("🛡️ GEM Momentum: USA (Large & Small) - EU - EM")
+st.title("🛡️ Advanced GEM Momentum")
 
 # --- ZAKTUALIZOWANA BIBLIOTEKA (Dodano XRS2) ---
 etf_library = {
@@ -99,3 +99,4 @@ if not all_data.empty:
 
 else:
     st.info("Zaznacz instrumenty w menu bocznym.")
+
