@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 import pandas as pd
 
 # Ustawienia strony
-st.set_page_config(page_title="GEM Monitor (EUR)", layout="wide")
+st.set_page_config(page_title="Advanced GEM Monitor (EUR)", layout="wide")
 
 # --- CSS: STYLIZACJA ---
 st.markdown("""
@@ -19,7 +19,7 @@ st.markdown("""
 # Nagłówek
 st.markdown("""
     <div style="text-align: center; margin-bottom: 20px;">
-        <h1 class="main-title">📈 GEM Momentum: USA - EU - EM</h1>
+        <h1 class="main-title">📈 Advanced GEM Momenitor: USA - EU - EM</h1>
         <p style="color: #888; margin: 0;">Smart Momentum. Safe Haven.</p>
     </div>
     """, unsafe_allow_html=True)
@@ -151,3 +151,4 @@ if not all_data.empty:
     """, unsafe_allow_html=True)
 else:
     st.info("Zaznacz instrumenty w menu bocznym.")
+
