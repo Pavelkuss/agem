@@ -32,7 +32,19 @@ st.markdown("""
     .block-container { padding-top: 1rem; padding-bottom: 1rem; }
     </style>
     """, unsafe_allow_html=True)
-
+# --- LOGO I NAGŁÓWEK ---
+# Upewnij się, że plik "agemlogo.png" znajduje się w tym samym folderze co Twoja aplikacja
+try:
+    # Wyświetla logo, dopasowuje do szerokości i centruje w kontenerze
+    st.image("agemlogo.png", use_container_width=True)
+except:
+    # Nagłówek awaryjny, jeśli plik nie zostanie znaleziony
+    st.markdown("""
+        <div style="text-align: center; margin-bottom: 10px;">
+            <h1 style="font-size: 1.6rem; font-weight: bold; margin-bottom: 0;">📈 Advanced GEM Strategy</h1>
+            <p style="color: #888; margin: 0; font-size: 0.8rem;">Smart Momentum. Safe Haven.</p>
+        </div>
+        """, unsafe_allow_html=True)
 # --- FUNKCJA POBIERANIA DANYCH ---
 @st.cache_data(ttl=3600)
 def get_data(tickers, start):
@@ -166,3 +178,4 @@ if not all_data.empty:
         st.markdown("<p style='font-size: 10px; color: #777; margin-top: 10px;'>Dane: Yahoo Finance (opóźnione). Pamiętaj o weryfikacji sygnałów przed decyzją inwestycyjną.</p>", unsafe_allow_html=True)
 else:
     st.info("Wybierz instrumenty.")
+
