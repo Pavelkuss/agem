@@ -136,9 +136,9 @@ if not all_data.empty:
     st.markdown("---")
     c1, c2 = st.columns([1, 4])
     c1.image("https://s.yimg.com/rz/p/yahoo_finance_en-US_h_p_finance_2.png", width=150)
-    c2.markdown("Aplikacja korzysta z darmowych danych dostarczanych przez **[Yahoo Finance](https://finance.yahoo.com)**. 
-    Dane mogą być opóźnione. Pamiętaj o weryfikacji sygnałów przed podjęciem decyzji inwestycyjnych.")
+    c2.markdown("Aplikacja korzysta z darmowych danych dostarczanych przez **[Yahoo Finance](https://finance.yahoo.com)**. Dane mogą być opóźnione. Pamiętaj o weryfikacji sygnałów przed podjęciem decyzji inwestycyjnych.")
 
 else:
     st.info("Zaznacz instrumenty w menu bocznym.")
+
 
