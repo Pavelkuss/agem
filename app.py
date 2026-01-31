@@ -3,16 +3,25 @@ import yfinance as yf
 import plotly.graph_objects as go
 from datetime import datetime, timedelta
 import pandas as pd
+import base64
 
 # --- KONFIGURACJA STRONY ---
-st.set_page_config(page_title="GEM Monitor", layout="wide")
+st.set_page_config(page_title="Advanced GEM Strategy", layout="wide")
+
+# --- FUNKCJA DO KONWERSJI OBRAZU NA BASE64 (Dla stabilności CSS) ---
+def get_base64_image(image_path):
+    try:
+        with open(image_path, "rb") as img_file:
+            return base64.b64encode(img_file.read()).decode()
+    except:
+        return None
 
 # --- CSS: RESPONSYWNOŚĆ, LOGO I TABELA ---
 st.markdown("""
     <style>
     .stPlotlyChart { pointer-events: none; }
     
-    /* Kontener dla LOGO - klucz do poprawnego wyświetlania */
+    /* Kontener dla LOGO - blokuje wielkość na PC, dopasowuje na Mobile */
     .logo-container {
         display: flex;
         justify-content: center;
@@ -21,11 +30,11 @@ st.markdown("""
     }
     .logo-container img {
         width: 100%;
-        max-width: 500px; /* Maksymalna szerokość na komputerze */
+        max-width: 500px; /* Maksymalny wymiar na komputerze */
         height: auto;
     }
 
-    /* Tabela - ekstremalnie ciasna */
+    /* Tabela - ekstremalnie zwężona pod ekrany telefonów */
     .custom-table { 
         width: 100%; 
         border-collapse: collapse; 
@@ -37,29 +46,39 @@ st.markdown("""
     .custom-table td { border-bottom: 1px solid #333; padding: 4px 0px; text-align: center; line-height: 1.2; }
     .col-rank { width: 22px; color: #888; font-weight: bold; }
 
+    /* Minimalizacja pustych przestrzeni Streamlit */
     .block-container { padding-top: 1rem; padding-bottom: 1rem; }
     
-    /* Ukrycie domyślnego menu Streamlit dla lepszego efektu "aplikacji" */
+    /* Ukrycie elementów interfejsu Streamlit dla czystego widoku */
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
+    header {visibility: hidden;}
     </style>
     """, unsafe_allow_html=True)
 
-# --- LOGO (Z KLASĄ CSS) ---
-try:
-    # Używamy HTML zamiast st.image dla lepszej kontroli responsywności
+# --- LOGO ---
+img_base64 = get_base64_image("agemlogo.png")
+if img_base64:
     st.markdown(f"""
         <div class="logo-container">
-            <img src="data:image/png;base64,{pd.io.common.file_to_base64("agemlogo.png") if hasattr(pd.io.common, 'file_to_base64') else ''}" 
-                 alt="Advanced GEM Strategy">
+            <img src="data:image/png;base64,{img_base64}" alt="Advanced GEM Strategy">
         </div>
         """, unsafe_allow_html=True)
-    # UWAGA: Jeśli powyższa metoda z base64 nie zadziała w Twoim środowisku, użyj prostszego:
-    # st.markdown('<div class="logo-container">', unsafe_allow_html=True)
-    # st.image("agemlogo.png")
-    # st.markdown('</div>', unsafe_allow_html=True)
-except:
-    st.markdown('<div style="text-align:center;"><h1>Advanced GEM Strategy</h1></div>', unsafe_allow_html=True)
+else:
+    st.markdown('<div style="text-align:center;"><h1>Advanced GEM Strategy</h1><p>Smart Momentum. Safe Haven.</p></div>', unsafe_allow_html=True)
+
+# --- BIBLIOTEKA INSTRUMENTÓW ---
+etf_data = {
+    "SXR8.DE": "iShares S&P 500", "SXRV.DE": "iShares Nasdaq 100", "XRS2.DE": "Xtrackers Russell 2000",
+    "EXSA.DE": "iShares STOXX 600", "SXRT.DE": "iShares EURO STOXX 50",
+    "IS3N.DE": "iShares MSCI EM IMI", "XEON.DE": "Overnight Rate (EUR)", "DBXP.DE": "Govt Bond 1-3y"
+}
+
+color_map = {
+    "SXR8.DE": "#377EB8", "SXRV.DE": "#4DAF4A", "XRS2.DE": "#FFFF33",
+    "EXSA.DE": "#4DBEEE", "SXRT.DE": "#984EA3",
+    "IS3N.DE": "#E41A1C", "XEON.DE": "#FF7F00", "DBXP.DE": "#F781BF"
+}
 
 # --- FUNKCJA POBIERANIA DANYCH ---
 @st.cache_data(ttl=3600)
@@ -73,7 +92,7 @@ def get_data(tickers, start):
         except: continue
     return combined.dropna()
 
-# --- SIDEBAR & URL ---
+# --- SIDEBAR & ZAPAMIĘTYWANIE (URL) ---
 st.sidebar.header("⚙️ Konfiguracja")
 params = st.query_params.to_dict()
 url_tickers = params.get("t", "").split(",") if params.get("t") else []
@@ -84,18 +103,18 @@ selected_tickers = st.sidebar.multiselect(
     format_func=lambda x: f"{x} ({etf_data[x]})"
 )
 
-if st.sidebar.button("Zapisz URL 🔗"):
+if st.sidebar.button("Zapisz jako domyślne (URL) 🔗"):
     st.query_params["t"] = ",".join(selected_tickers)
-    st.sidebar.success("Zapisano!")
+    st.sidebar.success("Zapisano! Użyj aktualnego linku jako zakładki.")
 
-# --- ANALIZA ---
+# --- ANALIZA MOMENTUM ---
 all_data = get_data(selected_tickers, datetime.now() - timedelta(days=5*365))
 
 if not all_data.empty:
     month_ends = pd.date_range(start=all_data.index.min(), end=all_data.index.max(), freq='ME')
     dates_list = list(month_ends[::-1])
     
-    selected_month = st.selectbox("Wybierz miesiąc:", options=dates_list, format_func=lambda x: x.strftime('%m.%Y'))
+    selected_month = st.selectbox("Wybierz miesiąc końcowy:", options=dates_list, format_func=lambda x: x.strftime('%m.%Y'))
     
     actual_end = all_data.index[all_data.index <= pd.Timestamp(selected_month)][-1]
     window = all_data.loc[actual_end - timedelta(days=365):actual_end]
@@ -103,7 +122,7 @@ if not all_data.empty:
     perf = sorted([{'ticker': t, 'return': ((window[t].iloc[-1]/window[t].iloc[0])-1)*100, 'series': window[t]} 
                    for t in selected_tickers if t in window.columns], key=lambda x: x['return'], reverse=True)
 
-    # SYGNAŁ
+    # WYŚWIETLANIE SYGNAŁU
     best = perf[0]
     xeon_ret = next((x['return'] for x in perf if x['ticker'] == "XEON.DE"), -999.0)
     is_cash = (best['ticker'] == "XEON.DE" or best['return'] < xeon_ret)
@@ -128,9 +147,9 @@ if not all_data.empty:
         yaxis=dict(fixedrange=True, ticksuffix="%"),
         hovermode=False
     )
-    st.plotly_chart(fig, use_container_width=True, config={'staticPlot': True})
+    st.plotly_chart(fig, use_container_width=True, config={'staticPlot': True, 'displayModeBar': False})
 
-    # --- TABELA ---
+    # --- TABELA HISTORYCZNA ---
     st.markdown("---")
     curr_idx = dates_list.index(selected_month)
     display_months = dates_list[curr_idx:curr_idx+5][::-1] 
@@ -167,12 +186,12 @@ if not all_data.empty:
     html += "</table>"
     st.write(html, unsafe_allow_html=True)
 
-    # --- STOPKA ---
+    # --- PEŁNA STOPKA ---
     st.markdown("<br>", unsafe_allow_html=True)
     col_a, col_b = st.columns([1, 4])
     with col_a:
         st.image("https://s.yimg.com/rz/p/yahoo_finance_en-US_h_p_finance_2.png", width=80)
     with col_b:
-        st.markdown("<p style='font-size: 9px; color: #777; line-height:1.1;'>Dane: Yahoo Finance (opóźnione).<br>Weryfikuj sygnały przed podjęciem decyzji.</p>", unsafe_allow_html=True)
+        st.markdown("<p style='font-size: 9px; color: #777; line-height:1.1; margin-top:10px;'>Dane: Yahoo Finance (opóźnione).<br>Pamiętaj o weryfikacji sygnałów przed podjęciem decyzji.</p>", unsafe_allow_html=True)
 else:
-    st.info("Wybierz instrumenty.")
+    st.info("Zaznacz instrumenty w menu bocznym, aby rozpocząć analizę.")
