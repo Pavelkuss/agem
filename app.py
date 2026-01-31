@@ -10,20 +10,20 @@ st.title("🛡️ GEM Momentum: USA - EU - EM")
 # --- BIBLIOTEKA INSTRUMENTÓW ---
 etf_library = {
     "USA": {
-        "SXR8.DE": "iShares Core S&P 500 Acc",
-        "SXRV.DE": "iShares Nasdaq 100 Acc",
-        "XRS2.DE": "Xtrackers Russell 2000 Acc"
+        "SXR8.DE": "iShares S&P 500",
+        "SXRV.DE": "iShares Nasdaq 100",
+        "XRS2.DE": "Xtrackers Russell 2000"
     },
     "Europa": {
-        "EXSA.DE": "iShares STOXX Europe 600 Acc",
-        "SXRT.DE": "iShares Core EURO STOXX 50 Acc"
+        "EXSA.DE": "iShares STOXX 600",
+        "SXRT.DE": "iShares EURO STOXX 50"
     },
     "Emerging Markets": {
-        "IS3N.DE": "iShares Core MSCI EM IMI Acc"
+        "IS3N.DE": "iShares MSCI EM IMI"
     },
-    "Bezpieczna Baza (Backup)": {
-        "XEON.DE": "Xtrackers Overnight Rate (Gotówka EUR)",
-        "DBXP.DE": "Xtrackers Eurozone Govt Bond 1-3y"
+    "Bezpieczna Baza": {
+        "XEON.DE": "Overnight Rate (EUR)",
+        "DBXP.DE": "Govt Bond 1-3y"
     }
 }
 
@@ -43,13 +43,12 @@ def get_data(tickers, start):
     return combined.dropna()
 
 # --- SIDEBAR ---
-st.sidebar.header("🔍 Wybór ETF")
 selected_tickers = []
+st.sidebar.header("🔍 Wybór ETF")
 for cat, items in etf_library.items():
     st.sidebar.subheader(cat)
     for ticker, name in items.items():
-        default = ticker in ["SXR8.DE", "XRS2.DE", "EXSA.DE", "XEON.DE"]
-        if st.sidebar.checkbox(f"{ticker} ({name})", value=default):
+        if st.sidebar.checkbox(f"{ticker}", value=ticker in ["SXR8.DE", "XRS2.DE", "EXSA.DE", "XEON.DE"]):
             selected_tickers.append(ticker)
 
 # --- ANALIZA ---
@@ -58,87 +57,91 @@ all_data = get_data(selected_tickers, start_date)
 
 if not all_data.empty:
     month_ends = pd.date_range(start=all_data.index.min(), end=all_data.index.max(), freq='ME')
-    selected_month = st.selectbox("Miesiąc końcowy okna 12m:", options=list(month_ends[::-1]), format_func=lambda x: x.strftime('%m.%Y'))
+    selected_month = st.selectbox("Miesiąc końcowy:", options=list(month_ends[::-1]), format_func=lambda x: x.strftime('%m.%Y'))
     
     actual_end = all_data.index[all_data.index <= pd.Timestamp(selected_month)][-1]
     start_view = actual_end - timedelta(days=365)
     window = all_data.loc[start_view:actual_end]
     
-    perf = []
-    for t in selected_tickers:
-        if t in window.columns:
-            ret = ((window[t].iloc[-1] / window[t].iloc[0]) - 1) * 100
-            perf.append({'ticker': t, 'return': ret, 'series': window[t]})
-    
-    perf = sorted(perf, key=lambda x: x['return'], reverse=True)
+    perf = sorted([{'ticker': t, 'return': ((window[t].iloc[-1]/window[t].iloc[0])-1)*100, 'series': window[t]} 
+                   for t in selected_tickers if t in window.columns], key=lambda x: x['return'], reverse=True)
 
     # SYGNAŁ
-    best_asset = perf[0]
-    xeon_return = next((x['return'] for x in perf if x['ticker'] == "XEON.DE"), -999)
-    
-    st.subheader(f"📢 Sygnał na dzień {actual_end.strftime('%d.%m.%Y')}")
-    if best_asset['ticker'] == "XEON.DE" or best_asset['return'] < xeon_return:
-        st.error(f"SYGNAŁ: GOTÓWKA (XEON). Żaden indeks nie pokonuje bazy EUR.")
+    best = perf[0]
+    xeon_ret = next((x['return'] for x in perf if x['ticker'] == "XEON.DE"), -999)
+    if best['ticker'] == "XEON.DE" or best['return'] < xeon_ret:
+        st.error(f"SYGNAŁ: GOTÓWKA (XEON)")
     else:
-        st.success(f"SYGNAŁ: INVEST ({best_asset['ticker']}) z wynikiem {best_asset['return']:+.2f}%.")
+        st.success(f"SYGNAŁ: INVEST ({best['ticker']}) {best['return']:+.2f}%")
 
-    # --- WYKRES ---
+    # --- WYKRES (Z odblokowanym przewijaniem dla mobile) ---
     fig = go.Figure()
     for item in perf:
-        t = item['ticker']
-        r = item['return']
         fig.add_trace(go.Scatter(x=item['series'].index, y=((item['series']/item['series'].iloc[0])-1)*100, 
-                                 name=f"{t} ({r:+.2f}%)", line=dict(width=3, color=color_map.get(t))))
+                                 name=f"{item['ticker']} ({item['return']:+.1f}%)", 
+                                 line=dict(width=3, color=color_map.get(item['ticker']))))
     
-    fig.update_layout(template="plotly_dark", height=500, xaxis=dict(tickformat="%m.%Y", fixedrange=True),
-                      yaxis=dict(ticksuffix="%", fixedrange=True), hovermode="x unified",
-                      legend=dict(orientation="h", y=1.08, xanchor="center", x=0.5))
-    st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
+    fig.update_layout(template="plotly_dark", height=450, 
+                      xaxis=dict(fixedrange=False), yaxis=dict(fixedrange=False), # Ważne dla mobile!
+                      legend=dict(orientation="h", y=1.1, x=0.5, xanchor="center"),
+                      margin=dict(l=0, r=0, t=30, b=0))
+    st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False, 'scrollZoom': False})
 
-    # --- TABELA HISTORYCZNA (Same strzałki) ---
+    # --- TABELA HTML (Kolory i Mobile-friendly) ---
     st.markdown("---")
-    st.subheader("🗓️ Historia Rankingu Momentum")
+    st.subheader("🗓️ Historia Rankingu")
     
     current_idx = list(month_ends).index(pd.Timestamp(selected_month))
-    past_months = month_ends[max(0, current_idx-6):current_idx+1]
+    past_months = month_ends[max(0, current_idx-5):current_idx+1]
     
-    monthly_rankings = []
+    # Obliczanie rankingów
+    rank_history = []
     for m in past_months:
-        m_end = all_data.index[all_data.index <= m][-1]
-        m_start = m_end - timedelta(days=365)
-        m_window = all_data.loc[m_start:m_end]
-        m_perf = sorted([(t, ((m_window[t].iloc[-1]/m_window[t].iloc[0])-1)*100) for t in selected_tickers if t in m_window.columns], key=lambda x: x[1], reverse=True)
-        monthly_rankings.append({t[0]: i+1 for i, t in enumerate(m_perf)})
-        monthly_rankings[-1]['_data'] = m_perf
-        monthly_rankings[-1]['_date'] = m.strftime('%m/%Y')
+        m_e = all_data.index[all_data.index <= m][-1]
+        m_w = all_data.loc[m_e - timedelta(days=365):m_e]
+        r = sorted([(t, ((m_w[t].iloc[-1]/m_w[t].iloc[0])-1)*100) for t in selected_tickers], key=lambda x: x[1], reverse=True)
+        rank_history.append({'date': m.strftime('%m/%y'), 'ranks': {x[0]: i+1 for i, x in enumerate(r)}, 'data': r})
 
-    history_rows = []
-    for i in range(1, len(monthly_rankings)):
-        curr = monthly_rankings[i]
-        prev = monthly_rankings[i-1]
-        row = {"Miesiąc": curr['_date']}
-        for rank_idx in range(min(4, len(curr['_data']))):
-            ticker, val = curr['_data'][rank_idx]
-            old_rank = prev.get(ticker, 99)
-            new_rank = rank_idx + 1
-            
-            indicator = ""
-            if new_rank < old_rank: indicator = " ↑"
-            elif new_rank > old_rank: indicator = " ↓"
-            
-            row[f"#{new_rank}"] = f"{ticker} ({val:+.2f}%){indicator}"
-        history_rows.append(row)
+    # Budowanie tabeli HTML
+    html = "<table style='width:100%; border-collapse: collapse; font-size: 12px; color: white;'>"
+    html += "<tr><th style='border-bottom: 1px solid #444;'>Poz.</th>"
+    for rh in rank_history:
+        html += f"<th style='border-bottom: 1px solid #444; text-align: center;'>{rh['date']}</th>"
+    html += "</tr>"
 
-    hist_df = pd.DataFrame(history_rows).set_index("Miesiąc").T
-    st.table(hist_df)
+    for i in range(4): # Top 4
+        html += f"<tr><td style='font-weight: bold; border-bottom: 1px solid #222;'>#{i+1}</td>"
+        for j in range(len(rank_history)):
+            curr_t, curr_v = rank_history[j]['data'][i]
+            # Logika strzałki i koloru
+            icon = ""
+            color = "white"
+            if j > 0:
+                prev_ranks = rank_history[j-1]['ranks']
+                old_pos = prev_ranks.get(curr_t, 99)
+                if i+1 < old_pos: 
+                    icon = " ↑"
+                    color = "#00ff00" # Zielony
+                elif i+1 > old_pos: 
+                    icon = " ↓"
+                    color = "#ff4b4b" # Czerwony
+            
+            html += f"<td style='text-align: center; border-bottom: 1px solid #222; padding: 5px 2px; color: {color};'>"
+            html += f"{curr_t}<br><span style='font-size: 10px;'>{curr_v:+.1f}%{icon}</span></td>"
+        html += "</tr>"
+    html += "</table>"
+    
+    st.write(html, unsafe_allow_html=True)
 
     # --- STOPKA ---
-    st.markdown("---")
+    st.markdown("<br>", unsafe_allow_html=True)
     c1, c2 = st.columns([1, 4])
-    c1.image("https://s.yimg.com/rz/p/yahoo_finance_en-US_h_p_finance_2.png", width=150)
-    c2.markdown("Aplikacja korzysta z darmowych danych dostarczanych przez **[Yahoo Finance](https://finance.yahoo.com)**. Dane mogą być opóźnione. Pamiętaj o weryfikacji sygnałów przed podjęciem decyzji inwestycyjnych.")
-
+    c1.image("https://s.yimg.com/rz/p/yahoo_finance_en-US_h_p_finance_2.png", width=120)
+    c2.markdown("""
+    <p style='font-size: 12px; color: #888;'>
+    Aplikacja korzysta z darmowych danych <b>Yahoo Finance</b>. Dane mogą być opóźnione.<br>
+    Pamiętaj o weryfikacji sygnałów przed podjęciem decyzji inwestycyjnych.
+    </p>
+    """, unsafe_allow_html=True)
 else:
     st.info("Zaznacz instrumenty w menu bocznym.")
-
-
