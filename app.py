@@ -19,7 +19,7 @@ st.markdown("""
 # Nagłówek
 st.markdown("""
     <div style="text-align: center; margin-bottom: 20px;">
-        <h1 class="main-title">📈 Advanced GEM Momenitor: USA - EU - EM</h1>
+        <h1 class="main-title">📈 Advanced GEM strategy: USA - EU - EM</h1>
         <p style="color: #888; margin: 0;">Smart Momentum. Safe Haven.</p>
     </div>
     """, unsafe_allow_html=True)
@@ -151,4 +151,5 @@ if not all_data.empty:
     """, unsafe_allow_html=True)
 else:
     st.info("Zaznacz instrumenty w menu bocznym.")
+
 
