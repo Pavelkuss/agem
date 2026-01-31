@@ -42,7 +42,7 @@ def get_data(tickers, start):
             combined[t] = df['Close']
     return combined.dropna()
 
-# --- SIDEBAR: KONFIGURACJA ---
+# --- SIDEBAR ---
 st.sidebar.header("🔍 Wybór ETF")
 selected_tickers = []
 for cat, items in etf_library.items():
@@ -52,7 +52,7 @@ for cat, items in etf_library.items():
         if st.sidebar.checkbox(f"{ticker} ({name})", value=default):
             selected_tickers.append(ticker)
 
-# --- ANALIZA DANYCH ---
+# --- ANALIZA ---
 start_date = datetime.now() - timedelta(days=5*365)
 all_data = get_data(selected_tickers, start_date)
 
@@ -72,7 +72,7 @@ if not all_data.empty:
     
     perf = sorted(perf, key=lambda x: x['return'], reverse=True)
 
-    # SYGNAŁ GEM
+    # SYGNAŁ
     best_asset = perf[0]
     xeon_return = next((x['return'] for x in perf if x['ticker'] == "XEON.DE"), -999)
     
@@ -82,32 +82,49 @@ if not all_data.empty:
     else:
         st.success(f"SYGNAŁ: INVEST ({best_asset['ticker']}) z wynikiem {best_asset['return']:+.2f}%.")
 
-    # --- UPROSZCZONY WYKRES ---
+    # --- WYKRES ---
     fig = go.Figure()
     for item in perf:
         t = item['ticker']
         r = item['return']
-        legend_label = f"{t} ({r:+.2f}%)"
-        
-        fig.add_trace(go.Scatter(
-            x=item['series'].index, 
-            y=((item['series']/item['series'].iloc[0])-1)*100, 
-            name=legend_label, 
-            line=dict(width=3, color=color_map.get(t)),
-            hoverinfo="y+name"
-        ))
+        fig.add_trace(go.Scatter(x=item['series'].index, y=((item['series']/item['series'].iloc[0])-1)*100, 
+                                 name=f"{t} ({r:+.2f}%)", line=dict(width=3, color=color_map.get(t))))
     
-    fig.update_layout(
-        template="plotly_dark", 
-        height=600,
-        xaxis=dict(tickformat="%m.%Y", fixedrange=True, showgrid=False),
-        yaxis=dict(ticksuffix="%", fixedrange=True, zeroline=True, zerolinecolor="gray"),
-        hovermode="x unified",
-        legend=dict(orientation="h", y=1.08, xanchor="center", x=0.5),
-        margin=dict(l=10, r=10, t=20, b=10)
-    )
-
+    fig.update_layout(template="plotly_dark", height=500, xaxis=dict(tickformat="%m.%Y", fixedrange=True),
+                      yaxis=dict(ticksuffix="%", fixedrange=True), hovermode="x unified",
+                      legend=dict(orientation="h", y=1.08, xanchor="center", x=0.5))
     st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
+
+    # --- NOWA TABELA HISTORYCZNA (Wzór z obrazka) ---
+    st.markdown("---")
+    st.subheader("🗓️ Historia Rankingu Momentum")
+    
+    history_data = []
+    # Generujemy ranking dla ostatnich 6 miesięcy widocznych na wykresie
+    past_months = month_ends[month_ends <= pd.Timestamp(selected_month)][:6]
+    
+    for m in past_months:
+        m_end = all_data.index[all_data.index <= m][-1]
+        m_start = m_end - timedelta(days=365)
+        m_window = all_data.loc[m_start:m_end]
+        
+        m_perf = []
+        for t in selected_tickers:
+            if t in m_window.columns:
+                r = ((m_window[t].iloc[-1] / m_window[t].iloc[0]) - 1) * 100
+                m_perf.append((t, r))
+        
+        m_perf = sorted(m_perf, key=lambda x: x[1], reverse=True)
+        history_data.append({
+            "Miesiąc": m.strftime('%m/%Y'),
+            "#1": f"{m_perf[0][0]} ({m_perf[0][1]:+.2f}%)",
+            "#2": f"{m_perf[1][0]} ({m_perf[1][1]:+.2f}%)",
+            "#3": f"{m_perf[2][0]} ({m_perf[2][1]:+.2f}%)",
+            "#4": f"{m_perf[3][0]} ({m_perf[3][1]:+.2f}%)" if len(m_perf) > 3 else "-"
+        })
+
+    hist_df = pd.DataFrame(history_data).set_index("Miesiąc").T
+    st.dataframe(hist_df, use_container_width=True)
 
 else:
     st.info("Zaznacz instrumenty w menu bocznym.")
