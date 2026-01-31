@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 import pandas as pd
 
 # Ustawienia strony
-st.set_page_config(page_title="Advanced GEM Monitor (EUR)", layout="wide")
+st.set_page_config(page_title="GEM Monitor (EUR)", layout="wide")
 
 # --- CSS: STYLIZACJA ---
 st.markdown("""
@@ -19,7 +19,7 @@ st.markdown("""
 # Nagłówek
 st.markdown("""
     <div style="text-align: center; margin-bottom: 20px;">
-        <h1 class="main-title">📈 Advanced GEM strategy: USA - EU - EM</h1>
+        <h1 class="main-title">📈 GEM Momentum: USA - EU - EM</h1>
         <p style="color: #888; margin: 0;">Smart Momentum. Safe Haven.</p>
     </div>
     """, unsafe_allow_html=True)
@@ -65,8 +65,22 @@ all_data = get_data(selected_tickers, start_date)
 
 if not all_data.empty:
     month_ends = pd.date_range(start=all_data.index.min(), end=all_data.index.max(), freq='ME')
-    selected_month = st.selectbox("Miesiąc końcowy:", options=list(month_ends[::-1]), 
-                                  format_func=lambda x: x.strftime('%m.%Y'), key="sel_month")
+    dates_list = list(month_ends[::-1]) # Najnowsze na górze
+    
+    # --- NOWA LOGIKA WYBORU MIESIĄCA ---
+    # Inicjalizacja stanu, jeśli nie istnieje
+    if 'sel_month_idx' not in st.session_state:
+        st.session_state.sel_month_idx = 0
+
+    selected_month = st.selectbox(
+        "Wybierz miesiąc końcowy (okno 12m):", 
+        options=dates_list, 
+        index=st.session_state.sel_month_idx,
+        format_func=lambda x: x.strftime('%m.%Y'), 
+        key="sel_month_widget"
+    )
+    # Aktualizacja indeksu w sesji po wyborze
+    st.session_state.sel_month_idx = dates_list.index(selected_month)
     
     actual_end = all_data.index[all_data.index <= pd.Timestamp(selected_month)][-1]
     start_view = actual_end - timedelta(days=365)
@@ -104,8 +118,12 @@ if not all_data.empty:
     st.markdown("---")
     st.subheader("🗓️ Historia Rankingu Momentum")
     
-    current_idx = list(month_ends).index(pd.Timestamp(selected_month))
-    past_months = month_ends[max(0, current_idx-5):current_idx+1]
+    current_idx = dates_list.index(selected_month)
+    # Wybieramy 6 miesięcy wokół wybranej daty (lub ostatnie 6, jeśli jesteśmy na końcu)
+    # dates_list jest malejąca (najnowsze na początku)
+    start_idx_table = max(0, current_idx - 2)
+    end_idx_table = min(len(dates_list), start_idx_table + 6)
+    past_months = dates_list[start_idx_table:end_idx_table][::-1] # Odwracamy do tabeli (chronologicznie)
     
     rank_history = []
     for m in past_months:
@@ -116,20 +134,22 @@ if not all_data.empty:
 
     html = "<table class='custom-table'><tr><th style='border-bottom: 1px solid #444;'>#</th>"
     for rh in rank_history:
-        html += f"<th style='border-bottom: 1px solid #444; text-align: center;'>{rh['date']}</th>"
+        # Wyróżnienie aktualnie wybranego miesiąca w nagłówku tabeli
+        border = "3px solid #555" if rh['date'] == selected_month.strftime('%m/%y') else "1px solid #444"
+        html += f"<th style='border-bottom: {border}; text-align: center;'>{rh['date']}</th>"
     html += "</tr>"
 
     for i in range(4):
         html += f"<tr><td style='font-weight: bold; border-bottom: 1px solid #333;'>{i+1}</td>"
         for j in range(len(rank_history)):
             curr_t, curr_v = rank_history[j]['data'][i]
-            ticker_color = color_map.get(curr_t, "white") # Kolor z wykresu
+            ticker_color = color_map.get(curr_t, "white")
             
             indicator = ""; trend_color = "white"
             if j > 0:
                 old_pos = rank_history[j-1]['ranks'].get(curr_t, 99)
-                if i+1 < old_pos: indicator = " ↑"; trend_color = "#00ff00" # Zielony
-                elif i+1 > old_pos: indicator = " ↓"; trend_color = "#ff4b4b" # Czerwony
+                if i+1 < old_pos: indicator = " ↑"; trend_color = "#00ff00"
+                elif i+1 > old_pos: indicator = " ↓"; trend_color = "#ff4b4b"
             
             html += f"<td style='text-align: center; border-bottom: 1px solid #333; padding: 6px 2px;'>"
             html += f"<b style='color: {ticker_color};'>{curr_t}</b><br>"
@@ -138,7 +158,7 @@ if not all_data.empty:
     html += "</table>"
     st.write(html, unsafe_allow_html=True)
 
-    # --- PRZYWRÓCONA STOPKA Z LOGO ---
+    # --- STOPKA Z LOGO ---
     st.markdown("<br>", unsafe_allow_html=True)
     st.markdown("---")
     c1, c2 = st.columns([1, 4])
@@ -151,5 +171,3 @@ if not all_data.empty:
     """, unsafe_allow_html=True)
 else:
     st.info("Zaznacz instrumenty w menu bocznym.")
-
-
