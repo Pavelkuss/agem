@@ -58,7 +58,6 @@ all_data = get_data(selected_tickers, start_date)
 
 if not all_data.empty:
     month_ends = pd.date_range(start=all_data.index.min(), end=all_data.index.max(), freq='ME')
-    # Odwracamy tylko do selectboxa, aby najnowszy był na górze listy wyboru
     selected_month = st.selectbox("Miesiąc końcowy okna 12m:", options=list(month_ends[::-1]), format_func=lambda x: x.strftime('%m.%Y'))
     
     actual_end = all_data.index[all_data.index <= pd.Timestamp(selected_month)][-1]
@@ -96,48 +95,48 @@ if not all_data.empty:
                       legend=dict(orientation="h", y=1.08, xanchor="center", x=0.5))
     st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
 
-    # --- TABELA HISTORYCZNA (Chronologiczna) ---
+    # --- TABELA HISTORYCZNA (Same strzałki) ---
     st.markdown("---")
     st.subheader("🗓️ Historia Rankingu Momentum")
     
-    history_data = []
-    # Wybieramy ostatnie 6 miesięcy kończących się na wybranej dacie (chronologicznie)
     current_idx = list(month_ends).index(pd.Timestamp(selected_month))
-    past_months = month_ends[max(0, current_idx-5):current_idx+1]
+    past_months = month_ends[max(0, current_idx-6):current_idx+1]
     
+    monthly_rankings = []
     for m in past_months:
         m_end = all_data.index[all_data.index <= m][-1]
         m_start = m_end - timedelta(days=365)
         m_window = all_data.loc[m_start:m_end]
-        
-        m_perf = []
-        for t in selected_tickers:
-            if t in m_window.columns:
-                r = ((m_window[t].iloc[-1] / m_window[t].iloc[0]) - 1) * 100
-                m_perf.append((t, r))
-        
-        m_perf = sorted(m_perf, key=lambda x: x[1], reverse=True)
-        history_data.append({
-            "Miesiąc": m.strftime('%m/%Y'),
-            "#1": f"{m_perf[0][0]} ({m_perf[0][1]:+.2f}%)",
-            "#2": f"{m_perf[1][0]} ({m_perf[1][1]:+.2f}%)",
-            "#3": f"{m_perf[2][0]} ({m_perf[2][1]:+.2f}%)",
-            "#4": f"{m_perf[3][0]} ({m_perf[3][1]:+.2f}%)" if len(m_perf) > 3 else "-"
-        })
+        m_perf = sorted([(t, ((m_window[t].iloc[-1]/m_window[t].iloc[0])-1)*100) for t in selected_tickers if t in m_window.columns], key=lambda x: x[1], reverse=True)
+        monthly_rankings.append({t[0]: i+1 for i, t in enumerate(m_perf)})
+        monthly_rankings[-1]['_data'] = m_perf
+        monthly_rankings[-1]['_date'] = m.strftime('%m/%Y')
 
-    hist_df = pd.DataFrame(history_data).set_index("Miesiąc").T
+    history_rows = []
+    for i in range(1, len(monthly_rankings)):
+        curr = monthly_rankings[i]
+        prev = monthly_rankings[i-1]
+        row = {"Miesiąc": curr['_date']}
+        for rank_idx in range(min(4, len(curr['_data']))):
+            ticker, val = curr['_data'][rank_idx]
+            old_rank = prev.get(ticker, 99)
+            new_rank = rank_idx + 1
+            
+            indicator = ""
+            if new_rank < old_rank: indicator = " ↑"
+            elif new_rank > old_rank: indicator = " ↓"
+            
+            row[f"#{new_rank}"] = f"{ticker} ({val:+.2f}%){indicator}"
+        history_rows.append(row)
+
+    hist_df = pd.DataFrame(history_rows).set_index("Miesiąc").T
     st.table(hist_df)
 
-    # --- STOPKA Z LOGO ---
+    # --- STOPKA ---
     st.markdown("---")
-    col1, col2 = st.columns([1, 4])
-    with col1:
-        st.image("https://s.yimg.com/rz/p/yahoo_finance_en-US_h_p_finance_2.png", width=150)
-    with col2:
-        st.markdown("""
-        Aplikacja korzysta z darmowych danych dostarczanych przez **[Yahoo Finance](https://finance.yahoo.com)**.  
-        Dane mogą być opóźnione. Pamiętaj o weryfikacji sygnałów przed podjęciem decyzji inwestycyjnych.
-        """)
+    c1, c2 = st.columns([1, 4])
+    c1.image("https://s.yimg.com/rz/p/yahoo_finance_en-US_h_p_finance_2.png", width=150)
+    c2.markdown("Aplikacja korzysta z darmowych danych dostarczanych przez **[Yahoo Finance](https://finance.yahoo.com)**.")
 
 else:
     st.info("Zaznacz instrumenty w menu bocznym.")
