@@ -7,44 +7,60 @@ import pandas as pd
 # --- KONFIGURACJA STRONY ---
 st.set_page_config(page_title="GEM Monitor", layout="wide")
 
-# --- CSS: ZERO SCROLL & KOMPAKTOWOŚĆ ---
+# --- CSS: RESPONSYWNOŚĆ, LOGO I TABELA ---
 st.markdown("""
     <style>
     .stPlotlyChart { pointer-events: none; }
-    .main-title { font-size: 1.6rem; font-weight: bold; margin-bottom: 0; text-align: center; }
     
-    /* Tabela bez marginesów i przewijania */
+    /* Kontener dla LOGO - klucz do poprawnego wyświetlania */
+    .logo-container {
+        display: flex;
+        justify-content: center;
+        width: 100%;
+        margin-bottom: 10px;
+    }
+    .logo-container img {
+        width: 100%;
+        max-width: 500px; /* Maksymalna szerokość na komputerze */
+        height: auto;
+    }
+
+    /* Tabela - ekstremalnie ciasna */
     .custom-table { 
         width: 100%; 
         border-collapse: collapse; 
         font-size: 10px; 
         color: white; 
-        margin-top: 5px;
-        table-layout: fixed; /* Wymusza trzymanie się szerokości */
+        table-layout: fixed;
     }
-    
     .custom-table th { border-bottom: 2px solid #444; padding: 4px 1px; text-align: center; background-color: #1E1E1E; }
-    .custom-table td { border-bottom: 1px solid #333; padding: 4px 1px; text-align: center; overflow: hidden; }
-    
-    .col-rank { width: 25px; color: #888; font-weight: bold; }
-    
-    /* Zmniejszenie odstępów Streamlit */
+    .custom-table td { border-bottom: 1px solid #333; padding: 4px 0px; text-align: center; line-height: 1.2; }
+    .col-rank { width: 22px; color: #888; font-weight: bold; }
+
     .block-container { padding-top: 1rem; padding-bottom: 1rem; }
+    
+    /* Ukrycie domyślnego menu Streamlit dla lepszego efektu "aplikacji" */
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
     </style>
     """, unsafe_allow_html=True)
-# --- LOGO I NAGŁÓWEK ---
-# Upewnij się, że plik "agemlogo.png" znajduje się w tym samym folderze co Twoja aplikacja
+
+# --- LOGO (Z KLASĄ CSS) ---
 try:
-    # Wyświetla logo, dopasowuje do szerokości i centruje w kontenerze
-    st.image("agemlogo.png", use_container_width=True)
-except:
-    # Nagłówek awaryjny, jeśli plik nie zostanie znaleziony
-    st.markdown("""
-        <div style="text-align: center; margin-bottom: 10px;">
-            <h1 style="font-size: 1.6rem; font-weight: bold; margin-bottom: 0;">📈 Advanced GEM Strategy</h1>
-            <p style="color: #888; margin: 0; font-size: 0.8rem;">Smart Momentum. Safe Haven.</p>
+    # Używamy HTML zamiast st.image dla lepszej kontroli responsywności
+    st.markdown(f"""
+        <div class="logo-container">
+            <img src="data:image/png;base64,{pd.io.common.file_to_base64("agemlogo.png") if hasattr(pd.io.common, 'file_to_base64') else ''}" 
+                 alt="Advanced GEM Strategy">
         </div>
         """, unsafe_allow_html=True)
+    # UWAGA: Jeśli powyższa metoda z base64 nie zadziała w Twoim środowisku, użyj prostszego:
+    # st.markdown('<div class="logo-container">', unsafe_allow_html=True)
+    # st.image("agemlogo.png")
+    # st.markdown('</div>', unsafe_allow_html=True)
+except:
+    st.markdown('<div style="text-align:center;"><h1>Advanced GEM Strategy</h1></div>', unsafe_allow_html=True)
+
 # --- FUNKCJA POBIERANIA DANYCH ---
 @st.cache_data(ttl=3600)
 def get_data(tickers, start):
@@ -56,27 +72,6 @@ def get_data(tickers, start):
             if not df.empty: combined[t] = df['Close']
         except: continue
     return combined.dropna()
-
-# --- NAGŁÓWEK ---
-st.markdown("""
-    <div style="text-align: center; margin-bottom: 10px;">
-        <h1 class="main-title">📈 GEM Momentum</h1>
-        <p style="color: #888; margin: 0; font-size: 0.8rem;">Smart Momentum. Safe Haven.</p>
-    </div>
-    """, unsafe_allow_html=True)
-
-# --- BIBLIOTEKA ---
-etf_data = {
-    "SXR8.DE": "iShares S&P 500", "SXRV.DE": "iShares Nasdaq 100", "XRS2.DE": "Xtrackers Russell 2000",
-    "EXSA.DE": "iShares STOXX 600", "SXRT.DE": "iShares EURO STOXX 50",
-    "IS3N.DE": "iShares MSCI EM IMI", "XEON.DE": "Overnight Rate (EUR)", "DBXP.DE": "Govt Bond 1-3y"
-}
-
-color_map = {
-    "SXR8.DE": "#377EB8", "SXRV.DE": "#4DAF4A", "XRS2.DE": "#FFFF33",
-    "EXSA.DE": "#4DBEEE", "SXRT.DE": "#984EA3",
-    "IS3N.DE": "#E41A1C", "XEON.DE": "#FF7F00", "DBXP.DE": "#F781BF"
-}
 
 # --- SIDEBAR & URL ---
 st.sidebar.header("⚙️ Konfiguracja")
@@ -100,7 +95,7 @@ if not all_data.empty:
     month_ends = pd.date_range(start=all_data.index.min(), end=all_data.index.max(), freq='ME')
     dates_list = list(month_ends[::-1])
     
-    selected_month = st.selectbox("Miesiąc:", options=dates_list, format_func=lambda x: x.strftime('%m.%Y'))
+    selected_month = st.selectbox("Wybierz miesiąc:", options=dates_list, format_func=lambda x: x.strftime('%m.%Y'))
     
     actual_end = all_data.index[all_data.index <= pd.Timestamp(selected_month)][-1]
     window = all_data.loc[actual_end - timedelta(days=365):actual_end]
@@ -111,11 +106,14 @@ if not all_data.empty:
     # SYGNAŁ
     best = perf[0]
     xeon_ret = next((x['return'] for x in perf if x['ticker'] == "XEON.DE"), -999.0)
-    msg = f"GOTÓWKA (XEON)" if (best['ticker'] == "XEON.DE" or best['return'] < xeon_ret) else f"{best['ticker']} ({best['return']:+.2f}%)"
-    if "GOTÓWKA" in msg: st.error(f"🚨 SYGNAŁ: {msg}")
-    else: st.success(f"🚀 SYGNAŁ: {msg}")
+    is_cash = (best['ticker'] == "XEON.DE" or best['return'] < xeon_ret)
+    
+    if is_cash:
+        st.error(f"🚨 SYGNAŁ: GOTÓWKA (XEON)")
+    else:
+        st.success(f"🚀 SYGNAŁ: {best['ticker']} ({best['return']:+.2f}%)")
 
-    # --- WYKRES Z PEŁNĄ LEGENDĄ ---
+    # --- WYKRES ---
     fig = go.Figure()
     for item in perf:
         fig.add_trace(go.Scatter(x=item['series'].index, y=((item['series']/item['series'].iloc[0])-1)*100, 
@@ -132,7 +130,7 @@ if not all_data.empty:
     )
     st.plotly_chart(fig, use_container_width=True, config={'staticPlot': True})
 
-    # --- TABELA (EKSTREMALNIE ZWĘŻONA) ---
+    # --- TABELA ---
     st.markdown("---")
     curr_idx = dates_list.index(selected_month)
     display_months = dates_list[curr_idx:curr_idx+5][::-1] 
@@ -169,13 +167,12 @@ if not all_data.empty:
     html += "</table>"
     st.write(html, unsafe_allow_html=True)
 
-    # --- PEŁNA STOPKA ---
+    # --- STOPKA ---
     st.markdown("<br>", unsafe_allow_html=True)
     col_a, col_b = st.columns([1, 4])
     with col_a:
-        st.image("https://s.yimg.com/rz/p/yahoo_finance_en-US_h_p_finance_2.png", width=90)
+        st.image("https://s.yimg.com/rz/p/yahoo_finance_en-US_h_p_finance_2.png", width=80)
     with col_b:
-        st.markdown("<p style='font-size: 10px; color: #777; margin-top: 10px;'>Dane: Yahoo Finance (opóźnione). Pamiętaj o weryfikacji sygnałów przed decyzją inwestycyjną.</p>", unsafe_allow_html=True)
+        st.markdown("<p style='font-size: 9px; color: #777; line-height:1.1;'>Dane: Yahoo Finance (opóźnione).<br>Weryfikuj sygnały przed podjęciem decyzji.</p>", unsafe_allow_html=True)
 else:
     st.info("Wybierz instrumenty.")
-
