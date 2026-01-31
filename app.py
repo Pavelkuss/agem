@@ -57,8 +57,9 @@ start_date = datetime.now() - timedelta(days=5*365)
 all_data = get_data(selected_tickers, start_date)
 
 if not all_data.empty:
-    month_ends = pd.date_range(start=all_data.index.min(), end=all_data.index.max(), freq='ME')[::-1]
-    selected_month = st.selectbox("Miesiąc końcowy okna 12m:", options=list(month_ends), format_func=lambda x: x.strftime('%m.%Y'))
+    month_ends = pd.date_range(start=all_data.index.min(), end=all_data.index.max(), freq='ME')
+    # Odwracamy tylko do selectboxa, aby najnowszy był na górze listy wyboru
+    selected_month = st.selectbox("Miesiąc końcowy okna 12m:", options=list(month_ends[::-1]), format_func=lambda x: x.strftime('%m.%Y'))
     
     actual_end = all_data.index[all_data.index <= pd.Timestamp(selected_month)][-1]
     start_view = actual_end - timedelta(days=365)
@@ -95,13 +96,14 @@ if not all_data.empty:
                       legend=dict(orientation="h", y=1.08, xanchor="center", x=0.5))
     st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
 
-    # --- NOWA TABELA HISTORYCZNA (Wzór z obrazka) ---
+    # --- TABELA HISTORYCZNA (Chronologiczna) ---
     st.markdown("---")
     st.subheader("🗓️ Historia Rankingu Momentum")
     
     history_data = []
-    # Generujemy ranking dla ostatnich 6 miesięcy widocznych na wykresie
-    past_months = month_ends[month_ends <= pd.Timestamp(selected_month)][:6]
+    # Wybieramy ostatnie 6 miesięcy kończących się na wybranej dacie (chronologicznie)
+    current_idx = list(month_ends).index(pd.Timestamp(selected_month))
+    past_months = month_ends[max(0, current_idx-5):current_idx+1]
     
     for m in past_months:
         m_end = all_data.index[all_data.index <= m][-1]
@@ -124,7 +126,18 @@ if not all_data.empty:
         })
 
     hist_df = pd.DataFrame(history_data).set_index("Miesiąc").T
-    st.dataframe(hist_df, use_container_width=True)
+    st.table(hist_df)
+
+    # --- STOPKA Z LOGO ---
+    st.markdown("---")
+    col1, col2 = st.columns([1, 4])
+    with col1:
+        st.image("https://s.yimg.com/rz/p/yahoo_finance_en-US_h_p_finance_2.png", width=150)
+    with col2:
+        st.markdown("""
+        Aplikacja korzysta z darmowych danych dostarczanych przez **[Yahoo Finance](https://finance.yahoo.com)**.  
+        Dane mogą być opóźnione. Pamiętaj o weryfikacji sygnałów przed podjęciem decyzji inwestycyjnych.
+        """)
 
 else:
     st.info("Zaznacz instrumenty w menu bocznym.")
