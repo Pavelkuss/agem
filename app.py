@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 import pandas as pd
 
 # --- KONFIGURACJA STRONY ---
-st.set_page_config(page_title="GEM Monitor (EUR)", layout="wide")
+st.set_page_config(page_title="GEM Monitor", layout="wide")
 
 # --- CSS: STYLIZACJA ---
 st.markdown("""
@@ -14,27 +14,23 @@ st.markdown("""
     .main-title { font-size: 2.2rem; font-weight: bold; margin-bottom: 0; text-align: center; }
     .custom-table { width: 100%; border-collapse: collapse; font-size: 12px; color: white; margin-top: 20px; }
     .custom-table th { border-bottom: 2px solid #444; padding: 10px; text-align: center; background-color: #1E1E1E; }
-    .custom-table td { border-bottom: 1px solid #333; padding: 8px; text-align: center; }
-    .stMultiSelect span { font-size: 14px !important; }
+    .custom-table td { border-bottom: 1px solid #333; padding: 8px; text-align: center; min-width: 80px; }
     </style>
     """, unsafe_allow_html=True)
 
-# --- FUNKCJA POBIERANIA DANYCH (NAPRAWIONA) ---
+# --- FUNKCJA POBIERANIA DANYCH ---
 @st.cache_data(ttl=3600)
 def get_data(tickers, start):
-    if not tickers:
-        return pd.DataFrame()
+    if not tickers: return pd.DataFrame()
     combined = pd.DataFrame()
     for t in tickers:
         try:
             df = yf.download(t, start=start, progress=False, multi_level_index=False)
-            if not df.empty and 'Close' in df.columns:
-                combined[t] = df['Close']
-        except:
-            continue
+            if not df.empty: combined[t] = df['Close']
+        except: continue
     return combined.dropna()
 
-# --- LOGO I TYTUŁ ---
+# --- NAGŁÓWEK ---
 st.markdown("""
     <div style="text-align: center; margin-bottom: 20px;">
         <h1 class="main-title">📈 GEM Momentum: USA - EU - EM</h1>
@@ -55,12 +51,13 @@ color_map = {
     "IS3N.DE": "#E41A1C", "XEON.DE": "#FF7F00", "DBXP.DE": "#F781BF"
 }
 
-# --- SIDEBAR: KONFIGURACJA ---
+# --- SIDEBAR & ZAPAMIĘTYWANIE ---
 st.sidebar.header("⚙️ Konfiguracja")
 
-# Odczyt domyślnych z adresu URL lub standardowe
-url_tickers = st.query_params.get_all("t")
-default_selection = url_tickers if url_tickers else ["SXR8.DE", "EXSA.DE", "IS3N.DE", "XEON.DE"]
+# Pobieranie tickerów z URL (naprawiona metoda)
+params = st.query_params.to_dict()
+url_tickers = params.get("t", "").split(",") if params.get("t") else []
+default_selection = [t for t in url_tickers if t in etf_data] if url_tickers else ["SXR8.DE", "EXSA.DE", "IS3N.DE", "XEON.DE"]
 
 selected_tickers = st.sidebar.multiselect(
     "Wybierz instrumenty:",
@@ -69,22 +66,18 @@ selected_tickers = st.sidebar.multiselect(
     format_func=lambda x: f"{x} ({etf_data[x]})"
 )
 
-if st.sidebar.button("Zapisz w adresie URL 🔗"):
-    st.query_params.clear()
-    for t in selected_tickers:
-        st.query_params.append("t", t)
-    st.sidebar.success("Zapisano! Możesz teraz dodać tę stronę do zakładek.")
+if st.sidebar.button("Zapisz jako domyślne (URL) 🔗"):
+    st.query_params["t"] = ",".join(selected_tickers)
+    st.sidebar.success("Zapisano! Użyj tego linku jako zakładki.")
 
 # --- ANALIZA ---
-start_date = datetime.now() - timedelta(days=5*365)
-all_data = get_data(selected_tickers, start_date)
+all_data = get_data(selected_tickers, datetime.now() - timedelta(days=5*365))
 
 if not all_data.empty:
     month_ends = pd.date_range(start=all_data.index.min(), end=all_data.index.max(), freq='ME')
     dates_list = list(month_ends[::-1])
     
-    selected_month = st.selectbox("Miesiąc końcowy:", options=dates_list, 
-                                  format_func=lambda x: x.strftime('%m.%Y'), key="sel_m")
+    selected_month = st.selectbox("Miesiąc końcowy:", options=dates_list, format_func=lambda x: x.strftime('%m.%Y'))
     
     actual_end = all_data.index[all_data.index <= pd.Timestamp(selected_month)][-1]
     start_view = actual_end - timedelta(days=365)
@@ -105,21 +98,19 @@ if not all_data.empty:
     fig = go.Figure()
     for item in perf:
         fig.add_trace(go.Scatter(x=item['series'].index, y=((item['series']/item['series'].iloc[0])-1)*100, 
-                                 name=f"{item['ticker']}", 
-                                 line=dict(width=3, color=color_map.get(item['ticker']))))
-    fig.update_layout(template="plotly_dark", height=400, xaxis=dict(fixedrange=True), yaxis=dict(fixedrange=True, ticksuffix="%"), 
-                      hovermode=False, margin=dict(l=10, r=10, t=30, b=0), staticPlot=True)
-    st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False, 'staticPlot': True})
+                                 name=item['ticker'], line=dict(width=3, color=color_map.get(item['ticker']))))
+    fig.update_layout(template="plotly_dark", height=350, margin=dict(l=10, r=10, t=30, b=0),
+                      xaxis=dict(fixedrange=True), yaxis=dict(fixedrange=True, ticksuffix="%"), showlegend=True)
+    st.plotly_chart(fig, use_container_width=True, config={'staticPlot': True})
 
-    # --- TABELA WEDŁUG SZKICU ---
+    # --- TABELA (ZGODNIE ZE SZKICEM) ---
     st.markdown("---")
-    st.subheader("🗓️ Historia Rankingu")
-    
     curr_idx = dates_list.index(selected_month)
-    past_months = dates_list[max(0, curr_idx-2):min(len(dates_list), curr_idx+4)][::-1]
+    # Wyświetlamy 6 miesięcy: od aktualnego w lewo
+    display_months = dates_list[curr_idx:curr_idx+6][::-1] 
     
     rank_history = []
-    for m in past_months:
+    for m in display_months:
         m_e = all_data.index[all_data.index <= m][-1]
         m_w = all_data.loc[m_e - timedelta(days=365):m_e]
         r = sorted([(t, ((m_w[t].iloc[-1]/m_w[t].iloc[0])-1)*100) for t in selected_tickers], key=lambda x: x[1], reverse=True)
@@ -130,29 +121,30 @@ if not all_data.empty:
         html += f"<th>{rh['date']}</th>"
     html += "</tr>"
 
-    for i in range(4): # Pozycje #1, #2, #3, #4
-        html += f"<tr><td style='font-weight: bold; color: #888;'>#{i+1}</td>"
+    for i in range(len(selected_tickers)):
+        html += f"<tr><td style='color: #888;'>#{i+1}</td>"
         for j in range(len(rank_history)):
-            curr_t, curr_v = rank_history[j]['data'][i]
-            ticker_color = color_map.get(curr_t, "white")
-            
-            trend_color = "white"
-            icon = ""
-            if j > 0:
-                old_pos = rank_history[j-1]['ranks'].get(curr_t, 99)
-                if i+1 < old_pos: trend_color = "#00ff00"; icon = " ↑"
-                elif i+1 > old_pos: trend_color = "#ff4b4b"; icon = " ↓"
-            
-            html += f"<td><b style='color: {ticker_color};'>{curr_t}</b><br>"
-            html += f"<span style='color: {trend_color}; font-size: 10px;'>({curr_v:+.2f}%){icon}</span></td>"
+            if i < len(rank_history[j]['data']):
+                curr_t, curr_v = rank_history[j]['data'][i]
+                t_color = color_map.get(curr_t, "white")
+                
+                trend_color = "white"; icon = ""
+                if j > 0:
+                    old_pos = rank_history[j-1]['ranks'].get(curr_t, 99)
+                    if i+1 < old_pos: trend_color = "#00ff00"; icon = " ↑"
+                    elif i+1 > old_pos: trend_color = "#ff4b4b"; icon = " ↓"
+                
+                html += f"<td><b style='color: {t_color};'>{curr_t}</b><br>"
+                html += f"<span style='color: {trend_color}; font-size: 10px;'>({curr_v:+.2f}%){icon}</span></td>"
+            else:
+                html += "<td>-</td>"
         html += "</tr>"
+    
     html += "</table>"
     st.write(html, unsafe_allow_html=True)
 
     # --- STOPKA ---
     st.markdown("<br><hr>", unsafe_allow_html=True)
-    c1, c2 = st.columns([1, 4])
-    c1.image("https://s.yimg.com/rz/p/yahoo_finance_en-US_h_p_finance_2.png", width=120)
-    c2.markdown("<p style='font-size: 11px; color: #777;'>Dane Yahoo Finance. Dane mogą być opóźnione. Pamiętaj o weryfikacji sygnałów przed decyzją.</p>", unsafe_allow_html=True)
+    st.image("https://s.yimg.com/rz/p/yahoo_finance_en-US_h_p_finance_2.png", width=120)
 else:
     st.info("Wybierz instrumenty w menu bocznym.")
