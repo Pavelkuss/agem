@@ -7,7 +7,7 @@ import pandas as pd
 st.set_page_config(page_title="GEM Monitor (EUR)", layout="wide")
 st.title("🛡️ GEM Momentum: USA - EU - EM")
 
-# --- ZAKTUALIZOWANA BIBLIOTEKA (Bez Russell 1000) ---
+# --- BIBLIOTEKA INSTRUMENTÓW ---
 etf_library = {
     "USA": {
         "SXR8.DE": "iShares Core S&P 500 Acc",
@@ -27,7 +27,6 @@ etf_library = {
     }
 }
 
-# Mapowanie kolorów (zaktualizowane)
 color_map = {
     "SXR8.DE": "#377EB8", "SXRV.DE": "#4DAF4A", "XRS2.DE": "#FFFF33",
     "EXSA.DE": "#4DBEEE", "SXRT.DE": "#984EA3",
@@ -43,14 +42,13 @@ def get_data(tickers, start):
             combined[t] = df['Close']
     return combined.dropna()
 
-# --- SIDEBAR: WYBÓR ---
+# --- SIDEBAR: KONFIGURACJA ---
 st.sidebar.header("🔍 Wybór ETF")
 selected_tickers = []
 for cat, items in etf_library.items():
     st.sidebar.subheader(cat)
     for ticker, name in items.items():
-        # Domyślnie zaznaczamy główne indeksy i XEON
-        default = ticker in ["SXR8.DE", "EXSA.DE", "IS3N.DE", "XEON.DE"]
+        default = ticker in ["SXR8.DE", "XRS2.DE", "EXSA.DE", "XEON.DE"]
         if st.sidebar.checkbox(f"{ticker} ({name})", value=default):
             selected_tickers.append(ticker)
 
@@ -78,13 +76,13 @@ if not all_data.empty:
     best_asset = perf[0]
     xeon_return = next((x['return'] for x in perf if x['ticker'] == "XEON.DE"), -999)
     
-    st.subheader("📢 Sygnał Systemowy")
+    st.subheader(f"📢 Sygnał na dzień {actual_end.strftime('%d.%m.%Y')}")
     if best_asset['ticker'] == "XEON.DE" or best_asset['return'] < xeon_return:
         st.error(f"SYGNAŁ: GOTÓWKA (XEON). Żaden indeks nie pokonuje bazy EUR.")
     else:
-        st.success(f"SYGNAŁ: INVEST ({best_asset['ticker']}).")
+        st.success(f"SYGNAŁ: INVEST ({best_asset['ticker']}) z wynikiem {best_asset['return']:+.2f}%.")
 
-# --- UPROSZCZONY WYKRES ---
+    # --- UPROSZCZONY WYKRES ---
     fig = go.Figure()
     for item in perf:
         t = item['ticker']
@@ -96,40 +94,20 @@ if not all_data.empty:
             y=((item['series']/item['series'].iloc[0])-1)*100, 
             name=legend_label, 
             line=dict(width=3, color=color_map.get(t)),
-            hoverinfo="y+name" # Pokazuje tylko wartość i nazwę przy najechaniu
+            hoverinfo="y+name"
         ))
     
     fig.update_layout(
         template="plotly_dark", 
-        height=500,
-        xaxis=dict(
-            tickformat="%m.%Y", 
-            fixedrange=True, # Blokada zoomu na osi X
-            showgrid=False
-        ),
-        yaxis=dict(
-            ticksuffix="%", 
-            fixedrange=True, # Blokada zoomu na osi Y
-            zeroline=True,
-            zerolinecolor="gray"
-        ),
+        height=600,
+        xaxis=dict(tickformat="%m.%Y", fixedrange=True, showgrid=False),
+        yaxis=dict(ticksuffix="%", fixedrange=True, zeroline=True, zerolinecolor="gray"),
         hovermode="x unified",
-        legend=dict(
-            orientation="h", 
-            y=1.1, 
-            xanchor="center", 
-            x=0.5
-        ),
-        margin=dict(l=10, r=10, t=10, b=10) # Usunięcie zbędnych marginesów
+        legend=dict(orientation="h", y=1.08, xanchor="center", x=0.5),
+        margin=dict(l=10, r=10, t=20, b=10)
     )
 
-    # Wyświetlenie wykresu bez paska narzędzi (modebar)
     st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
-
-    # TABELA RANKINGOWA
-    st.markdown(f"### 🏆 Szczegółowy ranking ({actual_end.strftime('%d.%m.%Y')})")
-    st.table(pd.DataFrame([{"Ticker": i['ticker'], "Wynik 12m": f"{i['return']:+.2f}%"} for i in perf]))
 
 else:
     st.info("Zaznacz instrumenty w menu bocznym.")
-
