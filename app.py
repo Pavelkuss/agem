@@ -17,7 +17,6 @@ st.markdown("""
     .custom-table th { border-bottom: 2px solid #444; padding: 4px 1px; text-align: center; background-color: #1E1E1E; }
     .custom-table td { border-bottom: 1px solid #333; padding: 4px 0px; text-align: center; line-height: 1.2; }
     .col-rank { width: 22px; color: #888; font-weight: bold; }
-    .block-container { padding-top: 1rem; padding-bottom: 1rem; }
     #MainMenu, footer, header {visibility: hidden;}
     </style>
     """, unsafe_allow_html=True)
@@ -39,30 +38,32 @@ with col_l2:
     try: st.image("agemlogo.png", use_container_width=True)
     except: st.title("Advanced GEM")
 
-# --- ZARZĄDZANIE PAMIĘCIĄ (Local Storage) ---
-# Pobieramy zapisane dane przy starcie
-saved_data = localS.getItem("gem_portfolio")
-default_selection = ["SXR8.DE", "EXSA.DE", "IS3N.DE", "XEON.DE"]
+# --- WCZYTYWANIE Z PAMIĘCI ---
+# Próba pobrania danych z przeglądarki
+try:
+    saved_data = localS.getItem("gem_portfolio")
+except:
+    saved_data = None
 
-if saved_data:
-    # saved_data to string, musimy go zamienić na listę
+default_selection = ["SXR8.DE", "EXSA.DE", "IS3N.DE", "XEON.DE"]
+if saved_data and len(saved_data) > 3:
     default_selection = saved_data.split(",")
 
-# --- INTERFEJS WYBORU ---
-with st.expander("⚙️ Ustawienia portfela"):
+# --- INTERFEJS ---
+with st.expander("⚙️ Ustawienia Twojego Portfela"):
     selected_tickers = st.multiselect(
-        "Twoje instrumenty:", 
+        "Wybrane instrumenty:", 
         options=list(etf_data.keys()), 
         default=default_selection,
         format_func=lambda x: f"{x} ({etf_data[x]})"
     )
 
-    if st.button("Zapisz w pamięci urządzenia 💾"):
+    if st.button("Zapisz na tym urządzeniu 💾"):
         localS.setItem("gem_portfolio", ",".join(selected_tickers))
-        st.success("Zapisano! Ustawienia zostaną zachowane w tej przeglądarce.")
+        st.success("Zapisano pomyślnie!")
         st.rerun()
 
-# --- ANALIZA I POBIERANIE ---
+# --- POBIERANIE I ANALIZA ---
 @st.cache_data(ttl=3600)
 def get_data(tickers, start):
     if not tickers: return pd.DataFrame()
@@ -95,7 +96,7 @@ if not all_data.empty:
     else:
         st.success(f"🚀 SYGNAŁ: {best['ticker']} ({best['return']:+.2f}%)")
 
-    # --- WYKRES ---
+    # WYKRES I TABELA (Tak jak wcześniej...)
     fig = go.Figure()
     for item in perf:
         fig.add_trace(go.Scatter(x=item['series'].index, y=((item['series']/item['series'].iloc[0])-1)*100, 
@@ -106,7 +107,7 @@ if not all_data.empty:
                       xaxis=dict(fixedrange=True, showgrid=False), yaxis=dict(fixedrange=True, ticksuffix="%"), hovermode=False)
     st.plotly_chart(fig, use_container_width=True, config={'staticPlot': True, 'displayModeBar': False})
 
-    # --- TABELA ---
+    # Tabela
     st.markdown("---")
     curr_idx = dates_list.index(selected_month)
     display_months = dates_list[curr_idx:curr_idx+5][::-1] 
@@ -135,11 +136,10 @@ if not all_data.empty:
             else: html += "<td>-</td>"
         html += "</tr>"
     st.write(html + "</table>", unsafe_allow_html=True)
-
-    # --- STOPKA ---
+    
     st.markdown("<br>", unsafe_allow_html=True)
     c1, c2 = st.columns([1, 4])
     c1.image("https://s.yimg.com/rz/p/yahoo_finance_en-US_h_p_finance_2.png", width=80)
-    c2.markdown("<p style='font-size: 9px; color: #777; margin-top:10px;'>Dane: Yahoo Finance. Pamiętaj o weryfikacji sygnałów.</p>", unsafe_allow_html=True)
+    c2.markdown("<p style='font-size: 9px; color: #777;'>Weryfikuj sygnały przed decyzją.</p>", unsafe_allow_html=True)
 else:
-    st.info("Dodaj instrumenty w ustawieniach.")
+    st.info("Otwórz ustawienia i wybierz instrumenty.")
