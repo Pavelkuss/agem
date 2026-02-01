@@ -49,18 +49,30 @@ if not default_selection:
 
 # --- INTERFEJS WYBORU ---
 with st.expander("⚙️ Konfiguracja Portfela"):
-    selected_tickers = st.multiselect(
-        "Twoje fundusze:", 
-        options=list(etf_data.keys()), 
-        default=default_selection,
-        format_func=lambda x: f"{x} ({etf_data[x]})"
-    )
+    st.write("Wybierz fundusze do portfela:")
+    
+    # Tworzymy listę na wybrane tickery
+    new_selection = []
+    
+    # Generujemy checkboxy w dwóch kolumnach dla oszczędności miejsca
+    cols = st.columns(2)
+    for idx, (ticker, name) in enumerate(etf_data.items()):
+        # Sprawdzamy, czy dany ticker był wcześniej wybrany
+        is_checked = ticker in default_selection
+        
+        # Rozdzielamy checkboxy między kolumny
+        with cols[idx % 2]:
+            if st.checkbox(f"{ticker} ({name})", value=is_checked, key=f"cb_{ticker}"):
+                new_selection.append(ticker)
 
-    if st.button("Zastosuj i Zapamiętaj 💾"):
-        # Zapisujemy do query_params - to zmieni adres URL aplikacji
-        st.query_params["t"] = ",".join(selected_tickers)
-        st.success("Konfiguracja zastosowana!")
-        st.rerun()
+    st.markdown("---")
+    if st.button("Zastosuj i Zapamiętaj 💾", use_container_width=True):
+        if not new_selection:
+            st.warning("Wybierz przynajmniej jeden fundusz!")
+        else:
+            st.query_params["t"] = ",".join(new_selection)
+            st.success("Konfiguracja zastosowana!")
+            st.rerun()
 
 # --- POBIERANIE DANYCH ---
 @st.cache_data(ttl=3600)
@@ -138,3 +150,4 @@ if not all_data.empty:
     st.write(html + "</table>", unsafe_allow_html=True)
 else:
     st.info("Otwórz ustawienia i wybierz fundusze.")
+
