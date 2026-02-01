@@ -7,7 +7,7 @@ import pandas as pd
 # --- KONFIGURACJA STRONY ---
 st.set_page_config(page_title="Advanced GEM Strategy", layout="wide")
 
-# --- CSS ---
+# --- CSS: RESPONSYWNOŚĆ I TABELA ---
 st.markdown("""
     <style>
     .stPlotlyChart { pointer-events: none; }
@@ -17,61 +17,67 @@ st.markdown("""
     .col-rank { width: 22px; color: #888; font-weight: bold; }
     .block-container { padding-top: 1rem; padding-bottom: 1rem; }
     #MainMenu, footer, header {visibility: hidden;}
-    /* Styl dla checkboxów, żeby były czytelniejsze na mobile */
-    .stCheckbox { margin-bottom: -10px; }
     </style>
     """, unsafe_allow_html=True)
 
-# --- BIBLIOTEKA I KOLORY ---
+# --- BIBLIOTEKA INSTRUMENTÓW ---
 etf_data = {
-    "SXR8.DE": "iShares S&P 500", "SXRV.DE": "iShares Nasdaq 100", "XRS2.DE": "Xtrackers Russell 2000",
-    "EXSA.DE": "iShares STOXX 600", "SXRT.DE": "iShares EURO STOXX 50",
-    "IS3N.DE": "iShares MSCI EM IMI", "XEON.DE": "Overnight Rate (EUR)", "DBXP.DE": "Govt Bond 1-3y"
+    "SXR8.DE": "iShares Core S&P 500 UCITS ETF USD (Acc)",
+    "SXRV.DE": "iShares Nasdaq 100 UCITS ETF (Acc)",
+    "XRS2.DE": "Xtrackers Russell 2000 UCITS ETF (Acc)",
+    "EXSA.DE": "iShares STOXX Europe 600 UCITS ETF (DE)",
+    "SXRT.DE": "iShares Core EURO STOXX 50 UCITS ETF (Acc)",
+    "IS3N.DE": "iShares Core MSCI EM IMI UCITS ETF USD (Acc)",
+    "XEON.DE": "Xtrackers II EUR Overnight Rate Swap UCITS ETF",
+    "DBXP.DE": "Xtrackers II Germany Government Bond 1-3 UCITS ETF"
 }
+
 color_map = {
     "SXR8.DE": "#377EB8", "SXRV.DE": "#4DAF4A", "XRS2.DE": "#FFFF33",
-    "EXSA.DE": "#4DBEEE", "SXRT.DE": "#984EA3", "IS3N.DE": "#E41A1C", "XEON.DE": "#FF7F00", "DBXP.DE": "#F781BF"
+    "EXSA.DE": "#4DBEEE", "SXRT.DE": "#984EA3",
+    "IS3N.DE": "#E41A1C", "XEON.DE": "#FF7F00", "DBXP.DE": "#F781BF"
 }
 
 # --- LOGO ---
 col_l1, col_l2, col_l3 = st.columns([1, 2, 1])
 with col_l2:
-    try: st.image("agemlogo.png", use_container_width=True)
-    except: st.markdown("<h3 style='text-align:center;'>Advanced GEM</h3>", unsafe_allow_html=True)
+    try:
+        st.image("agemlogo.png", use_container_width=True)
+    except:
+        st.markdown("<h3 style='text-align:center;'>Advanced GEM Strategy</h3>", unsafe_allow_html=True)
 
-# --- LOGIKA PAMIĘCI ---
+# --- LOGIKA ZAPAMIĘTYWANIA (URL) ---
 params = st.query_params.to_dict()
 url_tickers = params.get("t", "").split(",") if params.get("t") else []
 default_selection = [t for t in url_tickers if t in etf_data]
+
 if not default_selection:
     default_selection = ["SXR8.DE", "EXSA.DE", "IS3N.DE", "XEON.DE"]
 
 # --- INTERFEJS WYBORU (CHECKBOXY) ---
 with st.expander("⚙️ Konfiguracja Portfela"):
-    st.write("Wybierz fundusze:")
+    st.write("Wybierz fundusze do analizy:")
     current_selection = []
-    cols = st.columns(2)
     
-    for idx, (ticker, name) in enumerate(etf_data.items()):
+    # Wyświetlanie checkboxów w liście pionowej dla czytelności pełnych nazw
+    for ticker, full_name in etf_data.items():
         is_checked = ticker in default_selection
-        with cols[idx % 2]:
-            # Dodajemy kolorową kropkę przy nazwie dla ułatwienia identyfikacji
-            label = f":{color_map[ticker][1:]}[●] {ticker}"
-            if st.checkbox(label, value=is_checked, key=f"cb_{ticker}", help=name):
-                current_selection.append(ticker)
+        # Format: TICKER - Pełna Nazwa
+        if st.checkbox(f"{ticker} - {full_name}", value=is_checked, key=f"cb_{ticker}"):
+            current_selection.append(ticker)
 
     st.markdown("---")
     if st.button("Zastosuj i Zapamiętaj 💾", use_container_width=True):
-        if len(current_selection) > 0:
+        if current_selection:
             st.query_params["t"] = ",".join(current_selection)
             st.rerun()
         else:
-            st.warning("Wybierz co najmniej jeden instrument.")
+            st.warning("Musisz wybrać przynajmniej jeden fundusz.")
 
-# Przypisujemy wybrane tickery do zmiennej używanej w analizie
+# DEFINICJAselected_tickers PRZED ANALIZĄ (Naprawia NameError)
 selected_tickers = current_selection if current_selection else default_selection
 
-# --- POBIERANIE DANYCH ---
+# --- FUNKCJA POBIERANIA DANYCH ---
 @st.cache_data(ttl=3600)
 def get_data(tickers, start):
     if not tickers: return pd.DataFrame()
@@ -85,11 +91,11 @@ def get_data(tickers, start):
 
 all_data = get_data(selected_tickers, datetime.now() - timedelta(days=5*365))
 
-# --- ANALIZA I WYKRES ---
+# --- ANALIZA MOMENTUM ---
 if not all_data.empty:
     month_ends = pd.date_range(start=all_data.index.min(), end=all_data.index.max(), freq='ME')
     dates_list = list(month_ends[::-1])
-    selected_month = st.selectbox("Miesiąc końcowy:", options=dates_list, format_func=lambda x: x.strftime('%m.%Y'))
+    selected_month = st.selectbox("Wybierz miesiąc końcowy:", options=dates_list, format_func=lambda x: x.strftime('%m.%Y'))
     
     actual_end = all_data.index[all_data.index <= pd.Timestamp(selected_month)][-1]
     window = all_data.loc[actual_end - timedelta(days=365):actual_end]
@@ -97,29 +103,36 @@ if not all_data.empty:
     perf = sorted([{'ticker': t, 'return': ((window[t].iloc[-1]/window[t].iloc[0])-1)*100, 'series': window[t]} 
                    for t in selected_tickers if t in window.columns], key=lambda x: x['return'], reverse=True)
 
-    # SYGNAŁ
+    # WYŚWIETLANIE SYGNAŁU
     best = perf[0]
     xeon_ret = next((x['return'] for x in perf if x['ticker'] == "XEON.DE"), -999.0)
-    if (best['ticker'] == "XEON.DE" or best['return'] < xeon_ret):
+    is_cash = (best['ticker'] == "XEON.DE" or best['return'] < xeon_ret)
+    
+    if is_cash:
         st.error(f"🚨 SYGNAŁ: GOTÓWKA (XEON)")
     else:
         st.success(f"🚀 SYGNAŁ: {best['ticker']} ({best['return']:+.2f}%)")
 
-    # WYKRES
+    # --- WYKRES ---
     fig = go.Figure()
     for item in perf:
         fig.add_trace(go.Scatter(x=item['series'].index, y=((item['series']/item['series'].iloc[0])-1)*100, 
                                  name=f"{item['ticker']}", 
                                  line=dict(width=2, color=color_map.get(item['ticker']))))
-    fig.update_layout(template="plotly_dark", height=280, margin=dict(l=5, r=5, t=10, b=0),
-                      legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5, font=dict(size=9)),
-                      xaxis=dict(fixedrange=True, showgrid=False), yaxis=dict(fixedrange=True, ticksuffix="%"), hovermode=False)
+    
+    fig.update_layout(
+        template="plotly_dark", height=280, margin=dict(l=5, r=5, t=10, b=0),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5, font=dict(size=9)),
+        xaxis=dict(fixedrange=True, showgrid=False), yaxis=dict(fixedrange=True, ticksuffix="%"),
+        hovermode=False
+    )
     st.plotly_chart(fig, use_container_width=True, config={'staticPlot': True, 'displayModeBar': False})
 
-    # TABELA HISTORYCZNA
+    # --- TABELA HISTORYCZNA ---
     st.markdown("---")
     curr_idx = dates_list.index(selected_month)
     display_months = dates_list[curr_idx:curr_idx+5][::-1] 
+    
     rank_history = []
     for m in display_months:
         m_e = all_data.index[all_data.index <= m][-1]
@@ -130,6 +143,7 @@ if not all_data.empty:
     html = "<table class='custom-table'><tr><th class='col-rank'>#</th>"
     for rh in rank_history: html += f"<th>{rh['date']}</th>"
     html += "</tr>"
+
     for i in range(len(selected_tickers)):
         html += f"<tr><td class='col-rank'>#{i+1}</td>"
         for j in range(len(rank_history)):
@@ -146,4 +160,4 @@ if not all_data.empty:
         html += "</tr>"
     st.write(html + "</table>", unsafe_allow_html=True)
 else:
-    st.info("Wybierz fundusze w ustawieniach.")
+    st.info("Zaznacz fundusze w konfiguracji powyżej.")
