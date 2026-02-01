@@ -7,7 +7,7 @@ import pandas as pd
 # --- KONFIGURACJA STRONY ---
 st.set_page_config(page_title="Advanced GEM Strategy", layout="wide")
 
-# --- CSS: RESPONSYWNOŚĆ ---
+# --- CSS: WYMUSZENIE POZIOMEGO UKŁADU NA MOBILE ---
 st.markdown("""
     <style>
     .stPlotlyChart { pointer-events: none; }
@@ -17,8 +17,16 @@ st.markdown("""
     .col-rank { width: 22px; color: #888; font-weight: bold; }
     .block-container { padding-top: 1rem; padding-bottom: 1rem; }
     #MainMenu, footer, header {visibility: hidden;}
-    /* Usunięcie marginesów pod widgetami w kolumnach */
-    [data-testid="column"] { display: flex; align-items: flex-start; }
+
+    /* WYMUSZENIE KOLUMN OBOK SIEBIE NA TELEFONIE */
+    [data-testid="column"] {
+        width: calc(50% - 1rem) !important;
+        flex: 1 1 calc(50% - 1rem) !important;
+        min-width: calc(50% - 1rem) !important;
+    }
+    
+    /* Naprawa marginesów expandera, żeby pasował do selectboxa */
+    .stExpander { margin-top: 0px; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -44,7 +52,7 @@ color_map = {
 col_logo_1, col_logo_2, col_logo_3 = st.columns([1, 2, 1])
 with col_logo_2:
     try: st.image("agemlogo.png", use_container_width=True)
-    except: st.markdown("<h3 style='text-align:center;'>Advanced GEM Strategy</h3>", unsafe_allow_html=True)
+    except: st.markdown("<h3 style='text-align:center;'>Advanced GEM</h3>", unsafe_allow_html=True)
 
 # --- LOGIKA PAMIĘCI ---
 params = st.query_params.to_dict()
@@ -53,23 +61,25 @@ default_selection = [t for t in url_tickers if t in etf_data]
 if not default_selection:
     default_selection = ["SXR8.DE", "EXSA.DE", "IS3N.DE", "XEON.DE"]
 
-# --- NAGŁÓWEK: PRZYCISKI OBOK SIEBIE ---
-col_cfg, col_date = st.columns([1, 1])
+# --- NAGŁÓWEK: PRZYCISKI OBOK SIEBIE (Naprawione dla Mobile) ---
+col_cfg, col_date = st.columns(2, gap="small")
 
 with col_cfg:
-    expander = st.expander("⚙️ Konfiguracja")
+    expander = st.expander("⚙️ Portfel")
 
 with col_date:
-    # Wstępne pobranie dat, aby selectbox miał co wyświetlić (na bazie domyślnych tickerów)
+    # Pobieramy daty raz
     @st.cache_data(ttl=86400)
-    def get_initial_dates():
+    def get_dates():
         df = yf.download("SXR8.DE", period="5y", progress=False, multi_level_index=False)
         return list(pd.date_range(start=df.index.min(), end=df.index.max(), freq='ME')[::-1])
     
-    dates_list = get_initial_dates()
-    selected_month = st.selectbox("Miesiąc:", options=dates_list, format_func=lambda x: x.strftime('%m.%Y'), label_visibility="collapsed")
+    dates_list = get_dates()
+    selected_month = st.selectbox("Miesiąc:", options=dates_list, 
+                                  format_func=lambda x: x.strftime('%m.%Y'), 
+                                  label_visibility="collapsed")
 
-# --- ZAWARTOŚĆ EXPANDERA ---
+# --- ZAWARTOŚĆ KONFIGURACJI ---
 with expander:
     current_selection = []
     for ticker, full_name in etf_data.items():
@@ -77,14 +87,14 @@ with expander:
         if st.checkbox(f"{ticker} - {full_name}", value=is_checked, key=f"cb_{ticker}"):
             current_selection.append(ticker)
     
-    if st.button("Zapisz ustawienia 💾", use_container_width=True):
+    if st.button("Zapisz 💾", use_container_width=True):
         st.query_params["t"] = ",".join(current_selection)
         st.rerun()
 
-# Wybrane tickery do analizy
+# Wybrane tickery
 selected_tickers = current_selection if current_selection else default_selection
 
-# --- POBIERANIE DANYCH ---
+# --- DALSZA ANALIZA (Bez zmian, skrócona dla przejrzystości) ---
 @st.cache_data(ttl=3600)
 def get_data(tickers, start):
     if not tickers: return pd.DataFrame()
@@ -98,7 +108,6 @@ def get_data(tickers, start):
 
 all_data = get_data(selected_tickers, datetime.now() - timedelta(days=5*365))
 
-# --- ANALIZA ---
 if not all_data.empty:
     actual_end = all_data.index[all_data.index <= pd.Timestamp(selected_month)][-1]
     window = all_data.loc[actual_end - timedelta(days=365):actual_end]
@@ -114,7 +123,7 @@ if not all_data.empty:
     else:
         st.success(f"🚀 SYGNAŁ: {best['ticker']} ({best['return']:+.2f}%)")
 
-    # --- WYKRES ---
+    # Wykres
     fig = go.Figure()
     for item in perf:
         fig.add_trace(go.Scatter(x=item['series'].index, y=((item['series']/item['series'].iloc[0])-1)*100, 
@@ -125,7 +134,8 @@ if not all_data.empty:
                       xaxis=dict(showgrid=False), yaxis=dict(ticksuffix="%"), hovermode=False)
     st.plotly_chart(fig, use_container_width=True, config={'staticPlot': True, 'displayModeBar': False})
 
-    # --- TABELA ---
+    # Tabela historyczna (Ranking)
+    st.markdown("---")
     curr_idx = dates_list.index(selected_month)
     display_months = dates_list[curr_idx:curr_idx+5][::-1] 
     rank_history = []
@@ -153,5 +163,3 @@ if not all_data.empty:
             else: html += "<td>-</td>"
         html += "</tr>"
     st.write(html + "</table>", unsafe_allow_html=True)
-else:
-    st.info("Wybierz fundusze w ustawieniach.")
