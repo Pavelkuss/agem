@@ -3,11 +3,9 @@ import yfinance as yf
 import plotly.graph_objects as go
 from datetime import datetime, timedelta
 import pandas as pd
-from streamlit_local_storage import LocalStorage
 
 # --- KONFIGURACJA ---
 st.set_page_config(page_title="Advanced GEM Strategy", layout="wide")
-localS = LocalStorage()
 
 # --- CSS ---
 st.markdown("""
@@ -17,6 +15,7 @@ st.markdown("""
     .custom-table th { border-bottom: 2px solid #444; padding: 4px 1px; text-align: center; background-color: #1E1E1E; }
     .custom-table td { border-bottom: 1px solid #333; padding: 4px 0px; text-align: center; line-height: 1.2; }
     .col-rank { width: 22px; color: #888; font-weight: bold; }
+    .block-container { padding-top: 1rem; padding-bottom: 1rem; }
     #MainMenu, footer, header {visibility: hidden;}
     </style>
     """, unsafe_allow_html=True)
@@ -38,32 +37,32 @@ with col_l2:
     try: st.image("agemlogo.png", use_container_width=True)
     except: st.title("Advanced GEM")
 
-# --- WCZYTYWANIE Z PAMIĘCI ---
-# Próba pobrania danych z przeglądarki
-try:
-    saved_data = localS.getItem("gem_portfolio")
-except:
-    saved_data = None
+# --- LOGIKA ZAPAMIĘTYWANIA (URL jako ukryty stan) ---
+# Odczytujemy parametry z paska adresu (to jedyny pewny sposób na pamięć w Streamlit)
+params = st.query_params.to_dict()
+saved_tickers = params.get("t", "").split(",") if params.get("t") else []
 
-default_selection = ["SXR8.DE", "EXSA.DE", "IS3N.DE", "XEON.DE"]
-if saved_data and len(saved_data) > 3:
-    default_selection = saved_data.split(",")
+# Jeśli w URL nic nie ma, użyj domyślnych
+default_selection = [t for t in saved_tickers if t in etf_data]
+if not default_selection:
+    default_selection = ["SXR8.DE", "EXSA.DE", "IS3N.DE", "XEON.DE"]
 
-# --- INTERFEJS ---
-with st.expander("⚙️ Ustawienia Twojego Portfela"):
+# --- INTERFEJS WYBORU ---
+with st.expander("⚙️ Konfiguracja Portfela"):
     selected_tickers = st.multiselect(
-        "Wybrane instrumenty:", 
+        "Twoje fundusze:", 
         options=list(etf_data.keys()), 
         default=default_selection,
         format_func=lambda x: f"{x} ({etf_data[x]})"
     )
 
-    if st.button("Zapisz na tym urządzeniu 💾"):
-        localS.setItem("gem_portfolio", ",".join(selected_tickers))
-        st.success("Zapisano pomyślnie!")
+    if st.button("Zastosuj i Zapamiętaj 💾"):
+        # Zapisujemy do query_params - to zmieni adres URL aplikacji
+        st.query_params["t"] = ",".join(selected_tickers)
+        st.success("Konfiguracja zastosowana!")
         st.rerun()
 
-# --- POBIERANIE I ANALIZA ---
+# --- POBIERANIE DANYCH ---
 @st.cache_data(ttl=3600)
 def get_data(tickers, start):
     if not tickers: return pd.DataFrame()
@@ -77,6 +76,7 @@ def get_data(tickers, start):
 
 all_data = get_data(selected_tickers, datetime.now() - timedelta(days=5*365))
 
+# --- ANALIZA (RESZTA KODU) ---
 if not all_data.empty:
     month_ends = pd.date_range(start=all_data.index.min(), end=all_data.index.max(), freq='ME')
     dates_list = list(month_ends[::-1])
@@ -96,7 +96,7 @@ if not all_data.empty:
     else:
         st.success(f"🚀 SYGNAŁ: {best['ticker']} ({best['return']:+.2f}%)")
 
-    # WYKRES I TABELA (Tak jak wcześniej...)
+    # --- WYKRES ---
     fig = go.Figure()
     for item in perf:
         fig.add_trace(go.Scatter(x=item['series'].index, y=((item['series']/item['series'].iloc[0])-1)*100, 
@@ -107,7 +107,7 @@ if not all_data.empty:
                       xaxis=dict(fixedrange=True, showgrid=False), yaxis=dict(fixedrange=True, ticksuffix="%"), hovermode=False)
     st.plotly_chart(fig, use_container_width=True, config={'staticPlot': True, 'displayModeBar': False})
 
-    # Tabela
+    # --- TABELA ---
     st.markdown("---")
     curr_idx = dates_list.index(selected_month)
     display_months = dates_list[curr_idx:curr_idx+5][::-1] 
@@ -136,10 +136,5 @@ if not all_data.empty:
             else: html += "<td>-</td>"
         html += "</tr>"
     st.write(html + "</table>", unsafe_allow_html=True)
-    
-    st.markdown("<br>", unsafe_allow_html=True)
-    c1, c2 = st.columns([1, 4])
-    c1.image("https://s.yimg.com/rz/p/yahoo_finance_en-US_h_p_finance_2.png", width=80)
-    c2.markdown("<p style='font-size: 9px; color: #777;'>Weryfikuj sygnały przed decyzją.</p>", unsafe_allow_html=True)
 else:
-    st.info("Otwórz ustawienia i wybierz instrumenty.")
+    st.info("Otwórz ustawienia i wybierz fundusze.")
