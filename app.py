@@ -4,7 +4,7 @@ import plotly.graph_objects as go
 from datetime import datetime, timedelta
 import pandas as pd
 
-# --- KONFIGURACJA ---
+# --- KONFIGURACJA STRONY ---
 st.set_page_config(page_title="Advanced GEM Strategy", layout="wide")
 
 # --- CSS ---
@@ -17,10 +17,12 @@ st.markdown("""
     .col-rank { width: 22px; color: #888; font-weight: bold; }
     .block-container { padding-top: 1rem; padding-bottom: 1rem; }
     #MainMenu, footer, header {visibility: hidden;}
+    /* Styl dla checkboxów, żeby były czytelniejsze na mobile */
+    .stCheckbox { margin-bottom: -10px; }
     </style>
     """, unsafe_allow_html=True)
 
-# --- BIBLIOTEKA ---
+# --- BIBLIOTEKA I KOLORY ---
 etf_data = {
     "SXR8.DE": "iShares S&P 500", "SXRV.DE": "iShares Nasdaq 100", "XRS2.DE": "Xtrackers Russell 2000",
     "EXSA.DE": "iShares STOXX 600", "SXRT.DE": "iShares EURO STOXX 50",
@@ -35,44 +37,39 @@ color_map = {
 col_l1, col_l2, col_l3 = st.columns([1, 2, 1])
 with col_l2:
     try: st.image("agemlogo.png", use_container_width=True)
-    except: st.title("Advanced GEM")
+    except: st.markdown("<h3 style='text-align:center;'>Advanced GEM</h3>", unsafe_allow_html=True)
 
-# --- LOGIKA ZAPAMIĘTYWANIA (URL jako ukryty stan) ---
-# Odczytujemy parametry z paska adresu (to jedyny pewny sposób na pamięć w Streamlit)
+# --- LOGIKA PAMIĘCI ---
 params = st.query_params.to_dict()
-saved_tickers = params.get("t", "").split(",") if params.get("t") else []
-
-# Jeśli w URL nic nie ma, użyj domyślnych
-default_selection = [t for t in saved_tickers if t in etf_data]
+url_tickers = params.get("t", "").split(",") if params.get("t") else []
+default_selection = [t for t in url_tickers if t in etf_data]
 if not default_selection:
     default_selection = ["SXR8.DE", "EXSA.DE", "IS3N.DE", "XEON.DE"]
 
-# --- INTERFEJS WYBORU ---
+# --- INTERFEJS WYBORU (CHECKBOXY) ---
 with st.expander("⚙️ Konfiguracja Portfela"):
-    st.write("Wybierz fundusze do portfela:")
-    
-    # Tworzymy listę na wybrane tickery
-    new_selection = []
-    
-    # Generujemy checkboxy w dwóch kolumnach dla oszczędności miejsca
+    st.write("Wybierz fundusze:")
+    current_selection = []
     cols = st.columns(2)
+    
     for idx, (ticker, name) in enumerate(etf_data.items()):
-        # Sprawdzamy, czy dany ticker był wcześniej wybrany
         is_checked = ticker in default_selection
-        
-        # Rozdzielamy checkboxy między kolumny
         with cols[idx % 2]:
-            if st.checkbox(f"{ticker} ({name})", value=is_checked, key=f"cb_{ticker}"):
-                new_selection.append(ticker)
+            # Dodajemy kolorową kropkę przy nazwie dla ułatwienia identyfikacji
+            label = f":{color_map[ticker][1:]}[●] {ticker}"
+            if st.checkbox(label, value=is_checked, key=f"cb_{ticker}", help=name):
+                current_selection.append(ticker)
 
     st.markdown("---")
     if st.button("Zastosuj i Zapamiętaj 💾", use_container_width=True):
-        if not new_selection:
-            st.warning("Wybierz przynajmniej jeden fundusz!")
-        else:
-            st.query_params["t"] = ",".join(new_selection)
-            st.success("Konfiguracja zastosowana!")
+        if len(current_selection) > 0:
+            st.query_params["t"] = ",".join(current_selection)
             st.rerun()
+        else:
+            st.warning("Wybierz co najmniej jeden instrument.")
+
+# Przypisujemy wybrane tickery do zmiennej używanej w analizie
+selected_tickers = current_selection if current_selection else default_selection
 
 # --- POBIERANIE DANYCH ---
 @st.cache_data(ttl=3600)
@@ -88,7 +85,7 @@ def get_data(tickers, start):
 
 all_data = get_data(selected_tickers, datetime.now() - timedelta(days=5*365))
 
-# --- ANALIZA (RESZTA KODU) ---
+# --- ANALIZA I WYKRES ---
 if not all_data.empty:
     month_ends = pd.date_range(start=all_data.index.min(), end=all_data.index.max(), freq='ME')
     dates_list = list(month_ends[::-1])
@@ -108,18 +105,18 @@ if not all_data.empty:
     else:
         st.success(f"🚀 SYGNAŁ: {best['ticker']} ({best['return']:+.2f}%)")
 
-    # --- WYKRES ---
+    # WYKRES
     fig = go.Figure()
     for item in perf:
         fig.add_trace(go.Scatter(x=item['series'].index, y=((item['series']/item['series'].iloc[0])-1)*100, 
-                                 name=f"{item['ticker']} ({item['return']:+.1f}%)", 
+                                 name=f"{item['ticker']}", 
                                  line=dict(width=2, color=color_map.get(item['ticker']))))
     fig.update_layout(template="plotly_dark", height=280, margin=dict(l=5, r=5, t=10, b=0),
                       legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5, font=dict(size=9)),
                       xaxis=dict(fixedrange=True, showgrid=False), yaxis=dict(fixedrange=True, ticksuffix="%"), hovermode=False)
     st.plotly_chart(fig, use_container_width=True, config={'staticPlot': True, 'displayModeBar': False})
 
-    # --- TABELA ---
+    # TABELA HISTORYCZNA
     st.markdown("---")
     curr_idx = dates_list.index(selected_month)
     display_months = dates_list[curr_idx:curr_idx+5][::-1] 
@@ -149,5 +146,4 @@ if not all_data.empty:
         html += "</tr>"
     st.write(html + "</table>", unsafe_allow_html=True)
 else:
-    st.info("Otwórz ustawienia i wybierz fundusze.")
-
+    st.info("Wybierz fundusze w ustawieniach.")
