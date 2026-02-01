@@ -30,7 +30,7 @@ st.markdown("""
     }
     .logo-container img {
         width: 100%;
-        max-width: 500px; /* Maksymalny wymiar na komputerze */
+        max-width: 1024px; /* Maksymalny wymiar na komputerze */
         height: auto;
     }
 
@@ -98,8 +98,8 @@ params = st.query_params.to_dict()
 url_tickers = params.get("t", "").split(",") if params.get("t") else []
 default_selection = [t for t in url_tickers if t in etf_data] if url_tickers else ["SXR8.DE", "EXSA.DE", "IS3N.DE", "XEON.DE"]
 
-selected_tickers = st.sidebar.multiselect(
-    "Instrumenty:", options=list(etf_data.keys()), default=default_selection,
+selected_tickers = st.multiselect(
+    "Wybierz instrumenty do analizy:", options=list(etf_data.keys()), default=default_selection,
     format_func=lambda x: f"{x} ({etf_data[x]})"
 )
 
@@ -195,3 +195,4 @@ if not all_data.empty:
         st.markdown("<p style='font-size: 9px; color: #777; line-height:1.1; margin-top:10px;'>Dane: Yahoo Finance (opóźnione).<br>Pamiętaj o weryfikacji sygnałów przed podjęciem decyzji.</p>", unsafe_allow_html=True)
 else:
     st.info("Zaznacz instrumenty w menu bocznym, aby rozpocząć analizę.")
+
