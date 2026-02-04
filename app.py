@@ -7,7 +7,7 @@ import pandas as pd
 # --- KONFIGURACJA STRONY ---
 st.set_page_config(page_title="Advanced GEM Strategy", layout="wide")
 
-# --- FUNKCJA POBIERANIA DAT ---
+# --- FUNKCJA DAT ---
 @st.cache_data(ttl=86400)
 def get_dates():
     try:
@@ -16,48 +16,66 @@ def get_dates():
     except:
         return [datetime.now().replace(day=1) - timedelta(days=i*30) for i in range(60)]
 
-# --- CSS: EKSTREMALNA KOMPAKTOWOŚĆ ---
+# --- CSS: EKSTREMALNE WYMUSZENIE UKŁADU POZIOMEGO ---
 st.markdown("""
     <style>
-    /* Wymuszenie ciasnego układu poziomego dla przycisków sterujących */
-    .nav-container {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        margin-bottom: 10px;
-    }
-    
-    /* Usunięcie domyślnych odstępów kolumn Streamlit w tej sekcji */
+    /* 1. Wymuszenie braku zawijania rzędu na mobile */
     [data-testid="stHorizontalBlock"] {
-        gap: 0px !important;
+        display: flex !important;
+        flex-direction: row !important;
+        flex-wrap: nowrap !important;
+        align-items: center !important;
+        justify-content: space-between !important;
+        gap: 2px !important;
     }
 
-    /* Blokada klawiatury w selectboxie */
-    div[data-baseweb="select"] input { pointer-events: none !important; }
+    /* 2. Indywidualne szerokości kolumn - TWARDE WYMUSZENIE */
+    /* Kolumna 1: Koło zębate */
+    [data-testid="stHorizontalBlock"] > div:nth-child(1) {
+        min-width: 15% !important;
+        max-width: 15% !important;
+    }
+    /* Kolumna 2: Przycisk minus */
+    [data-testid="stHorizontalBlock"] > div:nth-child(2) {
+        min-width: 15% !important;
+        max-width: 15% !important;
+    }
+    /* Kolumna 3: Data (Selectbox) */
+    [data-testid="stHorizontalBlock"] > div:nth-child(3) {
+        min-width: 55% !important;
+        max-width: 55% !important;
+    }
+    /* Kolumna 4: Przycisk plus */
+    [data-testid="stHorizontalBlock"] > div:nth-child(4) {
+        min-width: 15% !important;
+        max-width: 15% !important;
+    }
 
-    /* Styl tabeli */
+    /* 3. Usunięcie odstępów wewnątrz kolumn */
+    [data-testid="column"] {
+        padding: 0px !important;
+        margin: 0px !important;
+    }
+
+    /* 4. Estetyka przycisków i selectboxa */
+    .stButton button { width: 100% !important; padding: 0px !important; height: 40px !important; }
+    div[data-baseweb="select"] { width: 100% !important; }
+    div[data-baseweb="select"] input { pointer-events: none !important; } /* Blokada klawiatury */
+    
+    .stExpander { border: none !important; background: transparent !important; }
+    .stExpander > div:first-child { padding: 0 !important; }
+    
+    /* Tabela i reszta */
     .custom-table { width: 100%; border-collapse: collapse; font-size: 10px; color: white; table-layout: fixed; }
     .custom-table th { border-bottom: 2px solid #444; padding: 4px 1px; text-align: center; background-color: #1E1E1E; }
     .custom-table td { border-bottom: 1px solid #333; padding: 4px 0px; text-align: center; line-height: 1.2; }
     .col-rank { width: 22px; color: #888; font-weight: bold; }
-    
     .block-container { padding-top: 0.5rem; padding-bottom: 1rem; }
     #MainMenu, footer, header {visibility: hidden;}
-    
-    /* Kompaktowy expander */
-    .stExpander { border: none !important; background: transparent !important; margin-bottom: 0px !important; }
-    .stExpander > div:first-child { padding: 0 !important; width: 45px !important; }
-    
-    /* Przyciski +/- */
-    .stButton button { 
-        padding: 0px 10px !important; 
-        height: 38px !important; 
-        border-radius: 5px !important;
-    }
     </style>
     """, unsafe_allow_html=True)
 
-# --- BIBLIOTEKA INSTRUMENTÓW ---
+# --- BIBLIOTEKA ---
 etf_data = {
     "SXR8.DE": "iShares Core S&P 500 UCITS ETF USD (Acc)",
     "SXRV.DE": "iShares Nasdaq 100 UCITS ETF (Acc)",
@@ -74,45 +92,37 @@ color_map = {
     "IS3N.DE": "#E41A1C", "XEON.DE": "#FF7F00", "DBXP.DE": "#F781BF"
 }
 
-# --- LOGIKA PAMIĘCI I DAT ---
+# --- LOGIKA ---
 params = st.query_params.to_dict()
 url_tickers = params.get("t", "").split(",") if params.get("t") else []
 default_selection = [t for t in url_tickers if t in etf_data]
-if not default_selection:
-    default_selection = ["SXR8.DE", "EXSA.DE", "IS3N.DE", "XEON.DE"]
+if not default_selection: default_selection = ["SXR8.DE", "EXSA.DE", "IS3N.DE", "XEON.DE"]
 
 dates_list = get_dates()
-if 'date_idx' not in st.session_state:
-    st.session_state.date_idx = 0
+if 'date_idx' not in st.session_state: st.session_state.date_idx = 0
 
-# --- PASEK NAWIGACJI (KOMPAKTOWY) ---
-# Używamy kolumn, ale z bardzo małym odstępem i konkretnymi proporcjami
-c_cfg, c_min, c_val, c_plus = st.columns([0.5, 0.5, 2, 0.5])
+# --- PASEK NAWIGACJI (⚙️ - DATA +) ---
+c1, c2, c3, c4 = st.columns(4)
 
-with c_cfg:
+with c1:
     cfg_menu = st.expander("⚙️")
-
-with c_min:
+with c2:
     if st.button("－"):
         if st.session_state.date_idx < len(dates_list) - 1:
             st.session_state.date_idx += 1
             st.rerun()
-
-with c_val:
-    selected_month = st.selectbox(
-        "Data", options=dates_list, index=st.session_state.date_idx,
-        format_func=lambda x: x.strftime('%m.%Y'),
-        label_visibility="collapsed", key="date_selector"
-    )
+with c3:
+    selected_month = st.selectbox("D", options=dates_list, index=st.session_state.date_idx,
+                                  format_func=lambda x: x.strftime('%m.%Y'),
+                                  label_visibility="collapsed")
     st.session_state.date_idx = dates_list.index(selected_month)
-
-with c_plus:
+with c4:
     if st.button("＋"):
         if st.session_state.date_idx > 0:
             st.session_state.date_idx -= 1
             st.rerun()
 
-# --- ZAWARTOŚĆ USTAWIEŃ ---
+# --- MODAL / KONFIGURACJA ---
 with cfg_menu:
     st.write("Skonfiguruj portfel:")
     current_selection = []
@@ -125,7 +135,7 @@ with cfg_menu:
 
 active_tickers = current_selection if current_selection else default_selection
 
-# --- OBLICZENIA I WYKRES ---
+# --- DANE I ANALIZA ---
 @st.cache_data(ttl=3600)
 def fetch_data(tickers, start):
     if not tickers: return pd.DataFrame()
