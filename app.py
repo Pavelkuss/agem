@@ -16,22 +16,23 @@ def get_dates():
     except:
         return [datetime.now().replace(day=1) - timedelta(days=i*30) for i in range(60)]
 
-# --- CSS: KOMPAKTOWY INTERFEJS I BLOKADA KLAWIATURY ---
+# --- CSS: EKSTREMALNA KOMPAKTOWOŚĆ ---
 st.markdown("""
     <style>
-    /* Wymuszenie równego układu w jednej linii */
-    [data-testid="stHorizontalBlock"] {
-        display: flex !important;
-        flex-direction: row !important;
-        flex-wrap: nowrap !important;
-        align-items: center !important;
-        gap: 5px !important;
+    /* Wymuszenie ciasnego układu poziomego dla przycisków sterujących */
+    .nav-container {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 10px;
     }
     
-    /* Układ kolumn: Portfel (20%), Przycisk- (15%), Data (30%), Przycisk+ (15%) */
-    [data-testid="column"] { width: auto !important; flex: 1 !important; }
+    /* Usunięcie domyślnych odstępów kolumn Streamlit w tej sekcji */
+    [data-testid="stHorizontalBlock"] {
+        gap: 0px !important;
+    }
 
-    /* Blokada wpisywania z klawiatury w selectboxie */
+    /* Blokada klawiatury w selectboxie */
     div[data-baseweb="select"] input { pointer-events: none !important; }
 
     /* Styl tabeli */
@@ -40,12 +41,19 @@ st.markdown("""
     .custom-table td { border-bottom: 1px solid #333; padding: 4px 0px; text-align: center; line-height: 1.2; }
     .col-rank { width: 22px; color: #888; font-weight: bold; }
     
-    .block-container { padding-top: 1rem; padding-bottom: 1rem; }
+    .block-container { padding-top: 0.5rem; padding-bottom: 1rem; }
     #MainMenu, footer, header {visibility: hidden;}
     
-    /* Ukrycie obramowania expandera dla czystszego wyglądu przycisku */
-    .stExpander { border: none !important; background: transparent !important; }
-    .stExpander > div:first-child { padding: 0 !important; }
+    /* Kompaktowy expander */
+    .stExpander { border: none !important; background: transparent !important; margin-bottom: 0px !important; }
+    .stExpander > div:first-child { padding: 0 !important; width: 45px !important; }
+    
+    /* Przyciski +/- */
+    .stButton button { 
+        padding: 0px 10px !important; 
+        height: 38px !important; 
+        border-radius: 5px !important;
+    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -74,37 +82,31 @@ if not default_selection:
     default_selection = ["SXR8.DE", "EXSA.DE", "IS3N.DE", "XEON.DE"]
 
 dates_list = get_dates()
-
-# Obsługa stanu wybranego indeksu daty
 if 'date_idx' not in st.session_state:
     st.session_state.date_idx = 0
 
-# --- PASEK NAWIGACJI (⚙️ - + DATA +) ---
-col_cfg, col_prev, col_main_date, col_next = st.columns([1, 1, 3, 1])
+# --- PASEK NAWIGACJI (KOMPAKTOWY) ---
+# Używamy kolumn, ale z bardzo małym odstępem i konkretnymi proporcjami
+c_cfg, c_min, c_val, c_plus = st.columns([0.5, 0.5, 2, 0.5])
 
-with col_cfg:
-    # Expander jako ikona koła zębatego
+with c_cfg:
     cfg_menu = st.expander("⚙️")
 
-with col_prev:
+with c_min:
     if st.button("－"):
         if st.session_state.date_idx < len(dates_list) - 1:
             st.session_state.date_idx += 1
             st.rerun()
 
-with col_main_date:
+with c_val:
     selected_month = st.selectbox(
-        "Data", 
-        options=dates_list, 
-        index=st.session_state.date_idx,
+        "Data", options=dates_list, index=st.session_state.date_idx,
         format_func=lambda x: x.strftime('%m.%Y'),
-        label_visibility="collapsed",
-        key="date_selector"
+        label_visibility="collapsed", key="date_selector"
     )
-    # Synchronizacja indeksu, jeśli użytkownik kliknie bezpośrednio w selectbox
     st.session_state.date_idx = dates_list.index(selected_month)
 
-with col_next:
+with c_plus:
     if st.button("＋"):
         if st.session_state.date_idx > 0:
             st.session_state.date_idx -= 1
@@ -117,7 +119,6 @@ with cfg_menu:
     for ticker, full_name in etf_data.items():
         if st.checkbox(f"{ticker}", value=(ticker in default_selection), key=f"cb_{ticker}", help=full_name):
             current_selection.append(ticker)
-    
     if st.button("Zapisz 💾", use_container_width=True):
         st.query_params["t"] = ",".join(current_selection)
         st.rerun()
