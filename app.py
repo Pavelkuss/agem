@@ -39,6 +39,7 @@ st.markdown("""
     [data-testid="stHorizontalBlock"] > div:nth-child(2) {
         min-width: 15% !important;
         max-width: 15% !important;
+        justify-content: flex-end !important;
     }
     /* Kolumna 3: Data (Selectbox) */
     [data-testid="stHorizontalBlock"] > div:nth-child(3) {
@@ -207,4 +208,5 @@ if not all_prices.empty:
             else: html += "<td>-</td>"
         html += "</tr>"
     st.write(html + "</table>", unsafe_allow_html=True)
+
 
