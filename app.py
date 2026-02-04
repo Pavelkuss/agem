@@ -174,29 +174,74 @@ try:
             st.metric("Sharpe Ratio", f"{strat_sharpe:.2f}")
             st.caption(f"Buy & Hold: {bh_sharpe:.2f}")
 
-        # Wykres
+# --- ULEPSZONY WYKRES Z ZAZNACZENIEM POZYCJI ---
         fig = go.Figure()
-        fig.add_trace(go.Scatter(x=df_view.index, y=df_view['Equity_Strategy'], name="GEM Strategy", line=dict(color='green', width=2)))
+        
+        # Dodanie tła dla okresów Safe Asset (Cash)
+        # Szukamy grup dni, gdzie Position == 0
+        df_view['Is_Safe'] = (df_view['Position'] == 0).astype(int)
+        change_points = df_view['Is_Safe'].diff().fillna(0)
+        
+        # Logika rysowania prostokątów tła
+        safe_periods = []
+        start_p = None
+        for i, (date, is_safe) in enumerate(df_view['Is_Safe'].items()):
+            if is_safe == 1 and start_p is None:
+                start_p = date
+            elif is_safe == 0 and start_p is not None:
+                safe_periods.append((start_p, date))
+                start_p = None
+        if start_p is not None:
+            safe_periods.append((start_p, df_view.index[-1]))
+
+        for start_p, end_p in safe_periods:
+            fig.add_vrect(
+                x0=start_p, x1=end_p,
+                fillcolor="rgba(255, 0, 0, 0.1)", # Delikatny czerwony/pomarańczowy
+                layer="below", line_width=0,
+                annotation_text="SAFE", annotation_position="top left"
+            )
+
+        # Linie kapitału
+        fig.add_trace(go.Scatter(x=df_view.index, y=df_view['Equity_Strategy'], name="GEM Strategy", line=dict(color='green', width=3)))
         fig.add_trace(go.Scatter(x=df_view.index, y=df_view['Equity_BuyHold'], name="Buy & Hold", line=dict(color='gray', dash='dot')))
         
         fig.update_layout(
-            title=f"Krzywa Kapitału (Start = 1000 EUR)",
+            title=f"Krzywa Kapitału (Jasne tło = okresy w Safe Asset)",
             xaxis_title="Data",
-            yaxis_title="Wartość Portfela (EUR)",
+            yaxis_title="Wartość (EUR)",
             hovermode="x unified",
             template="plotly_white"
         )
         st.plotly_chart(fig, use_container_width=True)
         
-        # Tabela ostatnich sygnałów
-        st.subheader("Ostatnie sygnały")
-        last_signals = df_view[['Risky_Mom_12m', 'Safe_Mom_12m', 'Position']].tail(6).copy()
-        last_signals['Decyzja'] = np.where(last_signals['Position'] == 1, "Akcje", "Gotówka/Obligacje")
-        st.dataframe(last_signals.style.format({
-            'Risky_Mom_12m': '{:.2%}', 
-            'Safe_Mom_12m': '{:.2%}'
-        }))
+       # --- PEŁNA TABELA HISTORII DECYZJI ---
+        st.subheader("Pełna historia decyzji i momentum")
+        
+        # Przygotowanie czytelnej tabeli
+        history_df = df_view[['Risky_Mom_12m', 'Safe_Mom_12m', 'Position']].copy()
+        history_df['Decyzja'] = np.where(history_df['Position'] == 1, "📈 AKCJE", "🛡️ SAFE ASSET")
+        
+        # Dodanie kolumny wyjaśniającej "Dlaczego?"
+        history_df['Powód'] = np.where(
+            history_df['Risky_Mom_12m'] > history_df['Safe_Mom_12m'], 
+            "Momentum Akcji > Momentum Safe", 
+            "Momentum Akcji < Momentum Safe"
+        )
+        
+        # Sortowanie od najnowszych
+        st.dataframe(
+            history_df.sort_index(ascending=False).style.format({
+                'Risky_Mom_12m': '{:.2%}', 
+                'Safe_Mom_12m': '{:.2%}'
+            }).applymap(
+                lambda x: 'color: green;' if x == "📈 AKCJE" else ('color: red;' if x == "🛡️ SAFE ASSET" else ''),
+                subset=['Decyzja']
+            ),
+            use_container_width=True
+        )
 
 except Exception as e:
     st.error(f"Wystąpił błąd: {e}")
+
 
