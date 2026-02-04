@@ -105,7 +105,7 @@ if 'date_idx' not in st.session_state: st.session_state.date_idx = 0
 c1, c2, c3, c4 = st.columns(4)
 
 with c1:
-    cfg_menu = st.expander("⚙️")
+    cfg_menu = st.expander("")
 with c2:
     if st.button("－"):
         if st.session_state.date_idx < len(dates_list) - 1:
@@ -207,3 +207,4 @@ if not all_prices.empty:
             else: html += "<td>-</td>"
         html += "</tr>"
     st.write(html + "</table>", unsafe_allow_html=True)
+
