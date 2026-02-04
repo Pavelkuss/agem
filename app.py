@@ -34,41 +34,47 @@ def get_data():
 
 def run_gem_logic(df):
     tickers = list(ASSETS.values())
+    all_assets = tickers + [SAFE_ASSET]
     
-    # 1. Obliczamy Momentum 12-miesięczne (12-m ROC)
-    # Wykorzystujemy ceny z okresu T, aby podjąć decyzję na okres T+1
+    # 1. Obliczamy Momentum 12-miesięczne na cenach zamknięcia
     momentum = df[tickers].pct_change(12)
     safe_momentum = df[SAFE_ASSET].pct_change(12)
     
-    # 2. Wybór najlepszego aktywa (Sygnał generowany na koniec miesiąca)
+    # 2. Sygnał na koniec miesiąca T
     best_risky_ticker = momentum.idxmax(axis=1)
     best_risky_val = momentum.max(axis=1)
     
-    # Logika GEM: Best Risky vs Safe Asset
-    decision = []
+    signals = []
     for date in df.index:
+        # GEM: Wybierz najlepszy ryzykowny, jeśli bije Safe Asset i jest > 0
         if best_risky_val.loc[date] > safe_momentum.loc[date] and best_risky_val.loc[date] > 0:
-            decision.append(best_risky_ticker.loc[date])
+            signals.append(best_risky_ticker.loc[date])
         else:
-            decision.append(SAFE_ASSET)
+            signals.append(SAFE_ASSET)
             
-    df['Signal_Asset'] = decision
-    # KLUCZOWE: Przesuwamy sygnał. Decyzja z końca stycznia obowiązuje na luty.
+    df['Signal_Asset'] = signals
+    # Pozycja w miesiącu T to sygnał wygenerowany na koniec miesiąca T-1
     df['Position'] = df['Signal_Asset'].shift(1)
     
-    # 3. Obliczanie zwrotów miesięcznych
-    returns = df[tickers + [SAFE_ASSET]].pct_change()
+    # 3. OBLICZANIE ZWROTÓW (NAPRAWIONE)
+    # Pobieramy zwroty wszystkich aktywów
+    returns = df[all_assets].pct_change()
     
-    # Obliczanie zwrotu strategii (Mnożymy zwrot z T przez pozycję wybraną w T-1)
-    strat_returns = []
+    # Inicjalizacja kapitału
+    strat_rets = []
+    
     for i in range(len(df)):
-        pos = df['Position'].iloc[i]
-        if pd.isna(pos):
-            strat_returns.append(0)
+        current_date = df.index[i]
+        asset_to_hold = df['Position'].iloc[i]
+        
+        if pd.isna(asset_to_hold):
+            strat_rets.append(0.0)
         else:
-            strat_returns.append(returns[pos].iloc[i])
+            # Pobieramy zwrot aktywa, które faktycznie trzymaliśmy w tym miesiącu
+            actual_return = returns.loc[current_date, asset_to_hold]
+            strat_rets.append(actual_return)
             
-    df['Strategy_Ret'] = strat_returns
+    df['Strategy_Ret'] = strat_rets
     df['Benchmark_Ret'] = returns[BENCHMARK]
     
     return df.dropna()
@@ -139,4 +145,5 @@ try:
 
 except Exception as e:
     st.error(f"Błąd krytyczny: {e}")
+
 
