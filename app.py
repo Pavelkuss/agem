@@ -5,37 +5,58 @@ from datetime import datetime, timedelta
 import pandas as pd
 
 # --- KONFIGURACJA ---
-st.set_page_config(page_title="Advanced GEM", layout="wide")
+st.set_page_config(page_title="Advanced GEM", layout="wide", initial_sidebar_state="collapsed")
 
-# --- CSS: WYMUSZENIE JEDNEJ LINII NA MOBILE ---
+# --- CSS: MODERN APP INTERFACE ---
 st.markdown("""
     <style>
-    /* Ukrycie menu Streamlit */
+    /* Ukrycie elementów systemowych */
     #MainMenu, footer, header {visibility: hidden;}
-    .block-container { padding-top: 0.5rem; padding-bottom: 0rem; }
-    
-    /* KLUCZ: Wymuszenie układu poziomego na każdym ekranie */
+    .block-container { padding-top: 0.5rem; padding-bottom: 1rem; }
+
+    /* TOOLBAR: Wymuszenie układu jak w aplikacji Android */
+    .app-toolbar {
+        display: flex !important;
+        flex-direction: row !important;
+        flex-wrap: nowrap !important;
+        align-items: center !important;
+        background-color: #1e1e1e;
+        padding: 5px;
+        border-radius: 10px;
+        margin-bottom: 15px;
+    }
+
+    /* Wymuszenie linii dla kolumn Streamlit */
     [data-testid="stHorizontalBlock"] {
         display: flex !important;
         flex-direction: row !important;
         flex-wrap: nowrap !important;
         align-items: center !important;
-        gap: 4px !important;
+        gap: 2px !important;
     }
 
-    /* Dopasowanie szerokości kolumn wewnątrz flexa */
-    [data-testid="column"]:nth-of-type(1) { flex: 0 0 15% !important; min-width: 45px !important; }
-    [data-testid="column"]:nth-of-type(2) { flex: 0 0 10% !important; min-width: 35px !important; }
-    [data-testid="column"]:nth-of-type(3) { flex: 1 1 auto !important; }
-    [data-testid="column"]:nth-of-type(4) { flex: 0 0 10% !important; min-width: 35px !important; }
+    /* Szerokości elementów */
+    [data-testid="column"]:nth-of-type(1) { flex: 0 0 45px !important; } /* Hamburger */
+    [data-testid="column"]:nth-of-type(2) { flex: 0 0 35px !important; } /* Minus */
+    [data-testid="column"]:nth-of-type(3) { flex: 1 1 auto !important; } /* Data */
+    [data-testid="column"]:nth-of-type(4) { flex: 0 0 35px !important; } /* Plus */
 
-    /* Estetyka przycisków i selectboxa */
-    .stButton button { width: 100% !important; padding: 0px !important; height: 38px !important; }
+    /* Stylizacja przycisków */
+    .stButton button {
+        background-color: #333 !important;
+        border: 1px solid #444 !important;
+        color: white !important;
+        height: 40px !important;
+        width: 100% !important;
+        padding: 0px !important;
+        font-weight: bold !important;
+    }
+
+    /* Blokada klawiatury w selectboxie */
     div[data-baseweb="select"] input { pointer-events: none !important; }
-    .stExpander { border: none !important; background: transparent !important; }
-    .stExpander > div:first-child { padding: 0 !important; }
     
-    /* Tabela historyczna */
+    /* Wykres i Tabela */
+    .stPlotlyChart { margin-top: -10px; }
     .custom-table { width: 100%; border-collapse: collapse; font-size: 10px; color: white; table-layout: fixed; }
     .custom-table th { border-bottom: 2px solid #444; padding: 4px 1px; text-align: center; }
     .custom-table td { border-bottom: 1px solid #333; padding: 4px 0px; text-align: center; line-height: 1.2; }
@@ -46,7 +67,6 @@ st.markdown("""
 @st.cache_data(ttl=86400)
 def get_dates():
     try:
-        # Pobieramy daty z S&P 500 jako wzorca
         df = yf.download("SXR8.DE", period="5y", progress=False)
         return list(pd.date_range(start=df.index.min(), end=df.index.max(), freq='ME')[::-1])
     except:
@@ -57,7 +77,7 @@ dates_list = get_dates()
 if 'date_idx' not in st.session_state:
     st.session_state.date_idx = 0
 
-# --- PORTFEL ---
+# --- PORTFEL (W PANELU BOCZNYM JAK W APKACH) ---
 etf_data = {
     "SXR8.DE": "S&P 500", "SXRV.DE": "Nasdaq 100", "XRS2.DE": "Russell 2000",
     "EXSA.DE": "Europe 600", "SXRT.DE": "Euro Stoxx 50", "IS3N.DE": "MSCI EM",
@@ -69,42 +89,49 @@ color_map = {
     "XEON.DE": "#FF7F00", "DBXP.DE": "#F781BF"
 }
 
-params = st.query_params.to_dict()
-active_tickers = params.get("t", "SXR8.DE,EXSA.DE,IS3N.DE,XEON.DE").split(",")
+with st.sidebar:
+    st.title("⚙️ Ustawienia")
+    params = st.query_params.to_dict()
+    active_tickers = params.get("t", "SXR8.DE,EXSA.DE,IS3N.DE,XEON.DE").split(",")
+    
+    new_selection = []
+    st.subheader("Twój Portfel:")
+    for t, name in etf_data.items():
+        if st.checkbox(f"{t} ({name})", value=(t in active_tickers)):
+            new_selection.append(t)
+    
+    if st.button("Zapisz i Przeładuj"):
+        st.query_params["t"] = ",".join(new_selection)
+        st.rerun()
 
-# --- PASEK STEROWANIA (⚙️ - DATA +) ---
-c1, c2, c3, c4 = st.columns([1, 1, 4, 1])
+# --- TOOLBAR (MENU + NAWIGACJA) ---
+# To jest "serce" interfejsu Androidowego
+col_menu, col_prev, col_date, col_next = st.columns([1, 1, 4, 1])
 
-with c1:
-    with st.expander("⚙️"):
-        st.caption("Fundusze:")
-        new_sel = []
-        for t in etf_data:
-            if st.checkbox(t, value=(t in active_tickers), key=f"c_{t}"):
-                new_sel.append(t)
-        if st.button("Zapisz"):
-            st.query_params["t"] = ",".join(new_sel)
-            st.rerun()
+with col_menu:
+    if st.button("☰"): # Hamburger otwiera sidebar
+        st.markdown('<script>window.parent.document.querySelector(".st-emotion-cache-1wb5hy5").click();</script>', unsafe_allow_html=True)
+        # W Streamlit 1.27+ sidebar otwiera się też automatycznie po kliknięciu strzałki
 
-with c2:
+with col_prev:
     if st.button("－"):
         if st.session_state.date_idx < len(dates_list) - 1:
             st.session_state.date_idx += 1
             st.rerun()
 
-with c3:
-    selected_month = st.selectbox("D", options=dates_list, index=st.session_state.date_idx,
+with col_date:
+    selected_month = st.selectbox("Date", options=dates_list, index=st.session_state.date_idx,
                                   format_func=lambda x: x.strftime('%m.%Y'),
                                   label_visibility="collapsed")
     st.session_state.date_idx = dates_list.index(selected_month)
 
-with c4:
+with col_next:
     if st.button("＋"):
         if st.session_state.date_idx > 0:
             st.session_state.date_idx -= 1
             st.rerun()
 
-# --- ANALIZA ---
+# --- OBLICZENIA ---
 @st.cache_data(ttl=3600)
 def fetch_prices(tickers):
     d = yf.download(tickers, start=datetime.now()-timedelta(days=5*365), progress=False, multi_level_index=False)['Close']
@@ -122,7 +149,7 @@ if not prices.empty:
         for t in active_tickers if t in window.columns
     ], key=lambda x: x['r'], reverse=True)
 
-    # Sygnał
+    # SYGNAŁ
     best = perf[0]
     xeon_r = next((x['r'] for x in perf if x['t'] == "XEON.DE"), -99)
     if best['t'] == "XEON.DE" or best['r'] < xeon_r:
@@ -130,11 +157,32 @@ if not prices.empty:
     else:
         st.success(f"🚀 SYGNAŁ: {best['t']} ({best['r']:+.2f}%)")
 
-    # Wykres
+    # WYKRES (Kompaktowy)
     fig = go.Figure()
     for item in perf:
         n = ((item['s']/item['s'].iloc[0])-1)*100
         fig.add_trace(go.Scatter(x=n.index, y=n, name=item['t'], line=dict(color=color_map.get(item['t'], "#FFF"))))
-    fig.update_layout(template="plotly_dark", height=250, margin=dict(l=0, r=0, t=10, b=0),
+    fig.update_layout(template="plotly_dark", height=220, margin=dict(l=0, r=0, t=10, b=0),
                       legend=dict(orientation="h", y=1.1, font=dict(size=9)), xaxis=dict(showgrid=False), hovermode=False)
     st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
+
+    # TABELA (Historyczna)
+    st.markdown("---")
+    view_dates = dates_list[st.session_state.date_idx : st.session_state.date_idx + 4][::-1]
+    
+    h_html = "<table class='custom-table'><tr><th>#</th>"
+    for d in view_dates: h_html += f"<th>{d.strftime('%m/%y')}</th>"
+    h_html += "</tr>"
+    
+    for i in range(min(len(active_tickers), 4)): # Pokaż top 4 dla czytelności
+        h_html += f"<tr><td>{i+1}</td>"
+        for d in view_dates:
+            try:
+                d_e = prices.index[prices.index <= d][-1]
+                d_w = prices.loc[d_e-timedelta(days=365):d_e]
+                r_l = sorted([(t, ((d_w[t].iloc[-1]/d_w[t].iloc[0])-1)*100) for t in active_tickers], key=lambda x: x[1], reverse=True)
+                t_n, t_r = r_l[i]
+                h_html += f"<td><span style='color:{color_map.get(t_n, '#FFF')}'>{t_n}</span><br>{t_r:+.1f}%</td>"
+            except: h_html += "<td>-</td>"
+        h_html += "</tr>"
+    st.write(h_html + "</table>", unsafe_allow_html=True)
