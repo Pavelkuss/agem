@@ -4,9 +4,7 @@ import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
 
-st.set_page_config(page_title="Multi-Asset GEM (EUR)", layout="wide")
-
-st.title("🚀 Multi-Asset Momentum Strategy (EUR)")
+st.set_page_config(page_title="Rygorystyczny GEM Multi-Asset", layout="wide")
 
 # --- KONFIGURACJA ---
 ASSETS = {
@@ -19,108 +17,104 @@ ASSETS = {
 SAFE_ASSET = "XEON.DE"
 BENCHMARK = "SXR8.DE"
 
-# --- POBIERANIE DANYCH (NAPRAWIONE) ---
 @st.cache_data
-def get_clean_data(assets_dict, safe_ticker):
-    tickers = list(assets_dict.values()) + [safe_ticker]
-    # Pobieramy dane
-    raw_data = yf.download(tickers, period="max", auto_adjust=True)
+def get_data():
+    tickers = list(ASSETS.values()) + [SAFE_ASSET]
+    # Pobieramy dane OHLC i wyciągamy Adj Close
+    raw = yf.download(tickers, period="max", auto_adjust=True)['Close']
     
-    # Wybieramy tylko Close/Adj Close i czyścimy strukturę
-    if 'Close' in raw_data.columns:
-        df = raw_data['Close']
-    else:
-        df = raw_data
-        
-    # Jeśli yfinance zwrócił MultiIndex (np. Tickers na górze), upraszczamy
-    if isinstance(df.columns, pd.MultiIndex):
-        df.columns = df.columns.get_level_values(0) if len(df.columns.levels[0]) > 1 else df.columns.get_level_values(1)
+    # Naprawa struktury po yfinance
+    if isinstance(raw.columns, pd.MultiIndex):
+        raw.columns = raw.columns.get_level_values(0)
+    
+    # Konwersja na liczby i czyszczenie
+    df = raw.apply(pd.to_numeric, errors='coerce').ffill()
+    # Resampling do Month-End
+    return df.resample('ME').last().dropna()
 
-    # KLUCZOWE: Konwersja na liczby i usunięcie błędów
-    df = df.apply(pd.to_numeric, errors='coerce')
+def run_gem_logic(df):
+    tickers = list(ASSETS.values())
     
-    # Resampling do miesięcy
-    monthly = df.resample('ME').last().ffill()
-    return monthly.dropna()
-
-# --- LOGIKA STRATEGII ---
-def run_strategy(df, assets_dict, safe_ticker):
-    tickers = list(assets_dict.values())
+    # 1. Obliczamy Momentum 12-miesięczne (12-m ROC)
+    # Wykorzystujemy ceny z okresu T, aby podjąć decyzję na okres T+1
+    momentum = df[tickers].pct_change(12)
+    safe_momentum = df[SAFE_ASSET].pct_change(12)
     
-    # Momentum 12-miesięczne
-    mom = df[tickers].pct_change(12)
-    safe_mom = df[safe_ticker].pct_change(12)
+    # 2. Wybór najlepszego aktywa (Sygnał generowany na koniec miesiąca)
+    best_risky_ticker = momentum.idxmax(axis=1)
+    best_risky_val = momentum.max(axis=1)
     
-    # Wybór najlepszego aktywa
-    # Wybieramy ticker z max momentum
-    best_ticker = mom.idxmax(axis=1)
-    best_val = mom.max(axis=1)
-    
-    # Sygnał: Jeśli najlepszy risky > safe, bierzemy risky. Inaczej safe.
-    signals = []
-    for i in range(len(df)):
-        date = df.index[i]
-        if best_val.iloc[i] > safe_mom.iloc[i]:
-            signals.append(best_ticker.iloc[i])
+    # Logika GEM: Best Risky vs Safe Asset
+    decision = []
+    for date in df.index:
+        if best_risky_val.loc[date] > safe_momentum.loc[date] and best_risky_val.loc[date] > 0:
+            decision.append(best_risky_ticker.loc[date])
         else:
-            signals.append(safe_ticker)
+            decision.append(SAFE_ASSET)
             
-    df['Selected_Asset'] = pd.Series(signals, index=df.index).shift(1)
+    df['Signal_Asset'] = decision
+    # KLUCZOWE: Przesuwamy sygnał. Decyzja z końca stycznia obowiązuje na luty.
+    df['Position'] = df['Signal_Asset'].shift(1)
     
-    # Obliczanie zwrotów
-    returns = df[tickers + [safe_ticker]].pct_change()
+    # 3. Obliczanie zwrotów miesięcznych
+    returns = df[tickers + [SAFE_ASSET]].pct_change()
     
-    strat_rets = []
+    # Obliczanie zwrotu strategii (Mnożymy zwrot z T przez pozycję wybraną w T-1)
+    strat_returns = []
     for i in range(len(df)):
-        asset = df['Selected_Asset'].iloc[i]
-        if pd.isna(asset) or asset not in returns.columns:
-            strat_rets.append(0)
+        pos = df['Position'].iloc[i]
+        if pd.isna(pos):
+            strat_returns.append(0)
         else:
-            strat_rets.append(returns[asset].iloc[i])
+            strat_returns.append(returns[pos].iloc[i])
             
-    df['Strategy_Ret'] = strat_rets
-    df['Bench_Ret'] = returns[BENCHMARK]
+    df['Strategy_Ret'] = strat_returns
+    df['Benchmark_Ret'] = returns[BENCHMARK]
+    
     return df.dropna()
 
-# --- UI I WYKRESY ---
+# --- WYŚWIETLANIE ---
 try:
-    data = get_clean_data(ASSETS, SAFE_ASSET)
-    if data.empty:
-        st.warning("Nie udało się pobrać danych. Spróbuj odświeżyć stronę.")
-    else:
-        results = run_strategy(data.copy(), ASSETS, SAFE_ASSET)
-        
-        # Slider daty
-        min_d, max_d = results.index.min().date(), results.index.max().date()
-        start_date, end_date = st.sidebar.select_slider("Wybierz zakres", options=results.index.date, value=(min_d, max_d))
-        
-        df_v = results.loc[str(start_date):str(end_date)].copy()
-        df_v['Equity_Strat'] = (1 + df_v['Strategy_Ret']).cumprod() * 1000
-        df_v['Equity_Bench'] = (1 + df_v['Bench_Ret']).cumprod() * 1000
-        
-        # Wykres
-        fig = go.Figure()
-        
-        # Cieniowanie okresów Safe Asset
-        df_v['Is_Safe'] = (df_v['Selected_Asset'] == SAFE_ASSET).astype(int)
-        for i in range(1, len(df_v)):
-            if df_v['Is_Safe'].iloc[i] == 1:
-                fig.add_vrect(x0=df_v.index[i-1], x1=df_v.index[i], fillcolor="rgba(255,165,0,0.1)", line_width=0)
+    data = get_data()
+    results = run_gem_logic(data.copy())
+    
+    st.title("💶 GEM Multi-Asset: Poprawiona Logika")
 
-        fig.add_trace(go.Scatter(x=df_v.index, y=df_v['Equity_Strat'], name="Strategy", line=dict(color='#00FF00', width=3)))
-        fig.add_trace(go.Scatter(x=df_v.index, y=df_v['Equity_Bench'], name="S&P 500 B&H", line=dict(color='gray', dash='dot')))
-        
-        fig.update_layout(template="plotly_dark", title="Krzywa kapitału (Start: 1000 EUR)")
-        st.plotly_chart(fig, use_container_width=True)
-        
-        # Tabela
-        st.subheader("Historia portfela")
-        inv_map = {v: k for k, v in ASSETS.items()}
-        inv_map[SAFE_ASSET] = "🛡️ CASH/BONDS"
-        
-        df_v['Asset_Name'] = df_v['Selected_Asset'].map(inv_map)
-        st.dataframe(df_v[['Asset_Name', 'Strategy_Ret']].sort_index(ascending=False), use_container_width=True)
+    # Zakres dat
+    dates = results.index.date
+    start_d, end_d = st.select_slider("Wybierz okres", options=dates, value=(dates[0], dates[-1]))
+    
+    mask = (results.index.date >= start_d) & (results.index.date <= end_d)
+    df_v = results.loc[mask].copy()
+    
+    # Kapitalizacja (start 1000 EUR)
+    df_v['Strat_Cum'] = (1 + df_v['Strategy_Ret']).cumprod() * 1000
+    df_v['Bench_Cum'] = (1 + df_v['Benchmark_Ret']).cumprod() * 1000
+
+    # Wykres
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=df_v.index, y=df_v['Strat_Cum'], name="Strategia GEM", line=dict(color='#00FF00', width=3)))
+    fig.add_trace(go.Scatter(x=df_v.index, y=df_v['Bench_Cum'], name="S&P 500 B&H", line=dict(color='white', dash='dot')))
+    
+    # Cieniowanie okresów Safe
+    safe_mask = df_v['Position'] == SAFE_ASSET
+    for i in range(1, len(df_v)):
+        if safe_mask.iloc[i]:
+            fig.add_vrect(x0=df_v.index[i-1], x1=df_v.index[i], fillcolor="rgba(255,100,0,0.15)", line_width=0)
+
+    fig.update_layout(template="plotly_dark", height=600, title="Porównanie wyników (EUR)")
+    st.plotly_chart(fig, use_container_width=True)
+
+    # --- DIAGNOSTYKA ---
+    st.subheader("🕵️ Diagnostyka: Dlaczego taki wybór?")
+    inv_map = {v: k for k, v in ASSETS.items()}
+    inv_map[SAFE_ASSET] = "🛡️ Safe Asset"
+    
+    diag_df = df_v.tail(12).copy()
+    diag_df['Aktualny Portfel'] = diag_df['Position'].map(inv_map)
+    diag_df['Miesięczny Wynik'] = diag_df['Strategy_Ret'].map('{:.2%}'.format)
+    
+    st.table(diag_df[['Aktualny Portfel', 'Miesięczny Wynik']])
 
 except Exception as e:
-    st.error(f"Wystąpił błąd: {e}")
-    st.info("Podpowiedź: Upewnij się, że biblioteka yfinance jest w najnowszej wersji.")
+    st.error(f"Błąd krytyczny: {e}")
