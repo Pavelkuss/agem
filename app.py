@@ -24,20 +24,52 @@ RISKY_ASSETS = {
 
 SAFE_ASSET = "XEON.DE"  # Xtrackers II EUR Overnight Rate Swap
 
-# --- POBIERANIE DANYCH ---
+# --- POBIERANIE DANYCH (WERSJA NAPRAWIONA) ---
 @st.cache_data
 def get_data(risky_ticker, safe_ticker):
-    tickers = [risky_ticker, safe_ticker]
-    # Pobieramy maksymalną historię
-    data = yf.download(tickers, period="max")['Adj Close']
-    
-    # Resampling do danych miesięcznych (ostatnia cena w miesiącu)
-    monthly_data = data.resample('M').last()
-    
-    # Usuwamy wiersze, gdzie brakuje danych dla któregokolwiek z aktywów
-    monthly_data = monthly_data.dropna()
-    
-    return monthly_data
+    # Pobieramy dane OSOBNO dla bezpieczeństwa
+    # auto_adjust=False jest kluczowe dla niektórych europejskich tickerów
+    try:
+        data_risky = yf.download(risky_ticker, period="max", auto_adjust=False, progress=False)
+        data_safe = yf.download(safe_ticker, period="max", auto_adjust=False, progress=False)
+        
+        # Sprawdzenie czy pobrano dane
+        if data_risky.empty or data_safe.empty:
+            return pd.DataFrame()
+
+        # Wyciągamy tylko ceny zamknięcia (obsługa różnych wersji yfinance)
+        # Czasem yfinance zwraca kolumny jako ('Adj Close', 'TICKER'), a czasem tylko 'Adj Close'
+        try:
+            p_risky = data_risky['Adj Close']
+            if isinstance(p_risky, pd.DataFrame): # Fix dla MultiIndex
+                p_risky = p_risky.iloc[:, 0]
+                
+            p_safe = data_safe['Adj Close']
+            if isinstance(p_safe, pd.DataFrame): # Fix dla MultiIndex
+                p_safe = p_safe.iloc[:, 0]
+        except KeyError:
+            # Fallback jeśli nie ma 'Adj Close', bierzemy 'Close'
+            p_risky = data_risky['Close']
+            p_safe = data_safe['Close']
+
+        # Łączymy w jeden DataFrame
+        df = pd.DataFrame({
+            risky_ticker: p_risky,
+            safe_ticker: p_safe
+        })
+        
+        # Resampling do danych miesięcznych (ostatnia cena w miesiącu)
+        monthly_data = df.resample('ME').last() # 'ME' to nowy standard pandas zamiast 'M'
+        
+        # Usuwamy wiersze tylko jeśli brakuje obu danych, lub uzupełniamy braki w historii (ffill)
+        # Strategia potrzebuje ciągłości. Używamy ffill na wypadek dziur w danych.
+        monthly_data = monthly_data.ffill().dropna()
+        
+        return monthly_data
+        
+    except Exception as e:
+        st.error(f"Szczegóły błędu yfinance: {e}")
+        return pd.DataFrame()
 
 # --- OBLICZENIA STRATEGII ---
 def calculate_strategy(df, risky_col, safe_col):
@@ -167,3 +199,4 @@ try:
 
 except Exception as e:
     st.error(f"Wystąpił błąd: {e}")
+
