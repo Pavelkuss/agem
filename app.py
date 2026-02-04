@@ -25,7 +25,7 @@ st.markdown("""
         flex-direction: row !important;
         flex-wrap: nowrap !important;
         align-items: center !important;
-        justify-content: space-between !important;
+        justify-content: center !important; /* Centrowanie całego paska */
         gap: 2px !important;
     }
 
@@ -39,6 +39,7 @@ st.markdown("""
     [data-testid="stHorizontalBlock"] > div:nth-child(2) {
         min-width: 15% !important;
         max-width: 15% !important;
+        display: flex !important;
         justify-content: flex-end !important;
     }
     /* Kolumna 3: Data (Selectbox) */
@@ -50,6 +51,8 @@ st.markdown("""
     [data-testid="stHorizontalBlock"] > div:nth-child(4) {
         min-width: 15% !important;
         max-width: 15% !important;
+        display: flex !important;
+        justify-content: flex-start !important;
     }
 
     /* 3. Usunięcie odstępów wewnątrz kolumn */
@@ -208,5 +211,6 @@ if not all_prices.empty:
             else: html += "<td>-</td>"
         html += "</tr>"
     st.write(html + "</table>", unsafe_allow_html=True)
+
 
 
