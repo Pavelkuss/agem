@@ -105,16 +105,38 @@ try:
     fig.update_layout(template="plotly_dark", height=600, title="Porównanie wyników (EUR)")
     st.plotly_chart(fig, use_container_width=True)
 
-    # --- DIAGNOSTYKA ---
-    st.subheader("🕵️ Diagnostyka: Dlaczego taki wybór?")
+# --- ZAAWANSOWANA DIAGNOSTYKA ---
+    st.subheader("🕵️ Szczegółowa Analiza Decyzji (Momentum 12m)")
+    st.markdown("Tabela pokazuje wartości momentum, na podstawie których system wybrał aktywo na **następny** miesiąc.")
+
+    # Przygotowanie tabeli z nazwami czytelnymi dla człowieka
     inv_map = {v: k for k, v in ASSETS.items()}
     inv_map[SAFE_ASSET] = "🛡️ Safe Asset"
+
+    # Wybieramy kolumny momentum dla wszystkich aktywów
+    tickers = list(ASSETS.values())
+    diag_cols = tickers + [SAFE_ASSET]
     
-    diag_df = df_v.tail(12).copy()
-    diag_df['Aktualny Portfel'] = diag_df['Position'].map(inv_map)
-    diag_df['Miesięczny Wynik'] = diag_df['Strategy_Ret'].map('{:.2%}'.format)
+    # Pobieramy momentum z wyników (użyliśmy pct_change(12) wcześniej)
+    momentum_table = results[diag_cols].pct_change(12).tail(15) 
     
-    st.table(diag_df[['Aktualny Portfel', 'Miesięczny Wynik']])
+    # Dodajemy informację o dokonanym wyborze
+    momentum_table['WYBRANY SYGNAŁ'] = results['Signal_Asset'].tail(15).map(inv_map)
+    
+    # Formatowanie dla czytelności
+    styled_diag = momentum_table.sort_index(ascending=False).style.format({
+        col: '{:.2%}' for col in diag_cols
+    }).highlight_max(subset=tickers + [SAFE_ASSET], color='#004d00', axis=1)
+
+    st.dataframe(styled_diag, use_container_width=True)
+
+    st.info("""
+    **Jak czytać tę tabelę?**
+    * Kolory **zielone** wskazują najwyższe momentum w danym miesiącu.
+    * Jeśli najwyższe momentum jest w kolumnie bezpiecznej (lub wszystkie są ujemne), system powinien wybrać Safe Asset.
+    * Pamiętaj: Sygnał wygenerowany w dacie X jest realizowany (widoczny w portfelu) w dacie X+1.
+    """)
 
 except Exception as e:
     st.error(f"Błąd krytyczny: {e}")
+
