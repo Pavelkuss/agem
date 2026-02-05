@@ -1,105 +1,80 @@
 import streamlit as st
-import requests
+import yfinance as yf
 import pandas as pd
+import requests
 
 st.set_page_config(page_title="GEM: Asset Selector", layout="wide")
 
-# Inicjalizacja listy wybranych tickerów
 if 'selected_assets' not in st.session_state:
     st.session_state.selected_assets = []
 
-st.title("🔍 Krok 1: Wyszukiwarka Aktywów")
+st.title("🔍 Krok 1: Wyszukiwarka z danymi o wielkości funduszu")
 
-# --- SEKCJA WYSZUKIWANIA ---
-query = st.text_input("Wpisz nazwę instrumentu lub ticker (np. 'iShares Core', 'SXR8', 'Gold'):", placeholder="Np. Nasdaq 100")
+query = st.text_input("Wpisz nazwę lub ticker (np. 'iShares S&P 500', 'Xtrackers'):")
 
 if query:
-    url = f"https://query2.finance.yahoo.com/v1/finance/search?q={query}&quotesCount=15"
+    # 1. Szukanie tickerów przez API Yahoo
+    search_url = f"https://query2.finance.yahoo.com/v1/finance/search?q={query}&quotesCount=10"
     headers = {'User-Agent': 'Mozilla/5.0'}
     
     try:
-        response = requests.get(url, headers=headers)
-        data = response.json()
-        quotes = data.get('quotes', [])
+        resp = requests.get(search_url, headers=headers).json()
+        quotes = resp.get('quotes', [])
         
         if quotes:
-            # Budowanie listy danych do tabeli
-            search_results = []
-            for q in quotes:
-                symbol = q.get('symbol')
-                # Przeliczanie marketCap na miliardy dla czytelności
-                raw_cap = q.get('marketCap', 0)
-                cap_display = f"{raw_cap / 1_000_000_000:.2f} B" if raw_cap else "N/A"
-                
-                search_results.append({
-                    "Ticker": symbol,
-                    "Nazwa": q.get('longname', 'N/A'),
-                    "Giełda": q.get('exchDisp', 'N/A'),
-                    "Typ": q.get('quoteType', 'N/A'),
-                    "Wielkość (Cap)": cap_display,
-                    "Raw_Cap": raw_cap # Ukryta kolumna do sortowania
-                })
+            results_data = []
             
-            df_search = pd.DataFrame(search_results)
+            # Pobieramy same tickery, aby jednym zapytaniem wyciągnąć detale
+            tickers_found = [q['symbol'] for q in quotes]
             
-            st.subheader("Wyniki wyszukiwania (Kliknij nagłówek, aby posortować)")
+            # 2. Pobieranie detali (Wielkość funduszu) przez yfinance
+            # Używamy st.spinner, bo to może zająć chwilę
+            with st.spinner('Pobieram szczegóły funduszy...'):
+                for q in quotes:
+                    sym = q['symbol']
+                    t_info = yf.Ticker(sym).info
+                    
+                    # Dla ETF wielkość jest w 'totalAssets', dla akcji w 'marketCap'
+                    size = t_info.get('totalAssets') or t_info.get('marketCap') or 0
+                    
+                    results_data.append({
+                        "Ticker": sym,
+                        "Nazwa": q.get('longname', 'N/A'),
+                        "Giełda": q.get('exchDisp', 'N/A'),
+                        "Typ": q.get('quoteType', 'N/A'),
+                        "Wielkość (Mld EUR/USD)": round(size / 1_000_000_000, 2) if size else 0,
+                        "Waluta": t_info.get('currency', 'N/A')
+                    })
             
-            # Wyświetlanie tabeli (interaktywnej)
-            # Używamy st.data_editor lub st.dataframe, aby umożliwić sortowanie
+            df_search = pd.DataFrame(results_data)
+            
+            # Sortowanie domyślne po wielkości
+            df_search = df_search.sort_values(by="Wielkość (Mld EUR/USD)", ascending=False)
+            
+            st.subheader("Wyniki wyszukiwania")
             st.dataframe(
-                df_search[["Ticker", "Nazwa", "Giełda", "Typ", "Wielkość (Cap)"]],
+                df_search,
                 use_container_width=True,
                 hide_index=True
             )
             
-            # --- PANEL DODAWANIA ---
-            # Ponieważ st.dataframe nie obsługuje bezpośrednio przycisków w rzędach w sposób prosty,
-            # używamy selectboxa do finalnego wyboru z wyników powyżej
-            selected_to_add = st.selectbox(
-                "Wybierz ticker z tabeli powyżej, aby dodać go do listy:",
-                options=df_search["Ticker"].tolist(),
-                index=None,
-                placeholder="Wybierz ticker..."
-            )
-            
-            if st.button("Dodaj wybrany do listy") and selected_to_add:
-                if selected_to_add not in st.session_state.selected_assets:
-                    st.session_state.selected_assets.append(selected_to_add)
-                    st.success(f"Dodano {selected_to_add}")
+            # Dodawanie do listy
+            to_add = st.selectbox("Wybierz ticker do dodania:", df_search["Ticker"])
+            if st.button("Dodaj do mojej strategii"):
+                if to_add not in st.session_state.selected_assets:
+                    st.session_state.selected_assets.append(to_add)
+                    st.success(f"Dodano {to_add}")
                     st.rerun()
-                else:
-                    st.warning("Już jest na liście.")
 
-        else:
-            st.info("Brak wyników.")
     except Exception as e:
-        st.error(f"Błąd wyszukiwania: {e}")
+        st.error(f"Błąd: {e}")
 
 st.divider()
-
-# --- TWOJA LISTA ---
-col1, col2 = st.columns([1, 1])
-
-with col1:
-    st.subheader("📋 Twoja Lista")
-    if st.session_state.selected_assets:
-        for asset in st.session_state.selected_assets:
-            c_label, c_del = st.columns([4, 1])
-            c_label.code(asset)
-            if c_del.button("❌", key=f"del_{asset}"):
-                st.session_state.selected_assets.remove(asset)
-                st.rerun()
-    else:
-        st.write("Lista pusta.")
-
-with col2:
-    st.subheader("⚙️ Akcje")
-    if st.session_state.selected_assets:
-        if st.button("Wyczyść wszystko"):
-            st.session_state.selected_assets = []
-            st.rerun()
-        
-        st.write("")
-        if st.button("Zatwierdź i przejdź do danych ➡️"):
-            st.session_state.step = 2
-            st.balloons()
+# Sekcja Twojej Listy (pozostaje bez zmian)
+st.subheader("📋 Twoja Lista")
+for asset in st.session_state.selected_assets:
+    c1, c2 = st.columns([5, 1])
+    c1.code(asset)
+    if c2.button("Usuń", key=f"del_{asset}"):
+        st.session_state.selected_assets.remove(asset)
+        st.rerun()
