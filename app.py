@@ -1,149 +1,87 @@
 import streamlit as st
-import yfinance as yf
+import requests
 import pandas as pd
-import numpy as np
-import plotly.graph_objects as go
 
-st.set_page_config(page_title="Rygorystyczny GEM Multi-Asset", layout="wide")
+st.set_page_config(page_title="GEM: Kreator Listy", layout="wide")
 
-# --- KONFIGURACJA ---
-ASSETS = {
-    "S&P 500": "SXR8.DE",
-    "Nasdaq 100": "SXRV.DE",
-    "STOXX 600": "EXSA.DE",
-    "STOXX 50": "EUN2.DE",
-    "Emerging Markets": "IS3N.DE"
-}
-SAFE_ASSET = "XEON.DE"
-BENCHMARK = "SXR8.DE"
+# Inicjalizacja listy wybranych aktywów w sesji (żeby nie znikała po odświeżeniu)
+if 'selected_assets' not in st.session_state:
+    st.session_state.selected_assets = []
 
-@st.cache_data
-def get_data():
-    tickers = list(ASSETS.values()) + [SAFE_ASSET]
-    # Pobieramy dane OHLC i wyciągamy Adj Close
-    raw = yf.download(tickers, period="max", auto_adjust=True)['Close']
-    
-    # Naprawa struktury po yfinance
-    if isinstance(raw.columns, pd.MultiIndex):
-        raw.columns = raw.columns.get_level_values(0)
-    
-    # Konwersja na liczby i czyszczenie
-    df = raw.apply(pd.to_numeric, errors='coerce').ffill()
-    # Resampling do Month-End
-    return df.resample('ME').last().dropna()
+st.title("🔍 Kreator Listy ETF/ETC")
+st.markdown("Wyszukaj instrumenty na Yahoo Finance i dodaj je do swojej bazy do obliczeń.")
 
-def run_gem_logic(df):
-    tickers = list(ASSETS.values())
-    all_assets = tickers + [SAFE_ASSET]
+# --- SEKCJA WYSZUKIWANIA ---
+query = st.text_input("Wpisz nazwę (np. 'S&P 500', 'Nasdaq', 'Gold') lub ticker:", "")
+search_button = st.button("Szukaj")
+
+if search_button and query:
+    # API Yahoo Finance Autocomplete
+    url = f"https://query2.finance.yahoo.com/v1/finance/search?q={query}&quotesCount=10"
+    headers = {'User-Agent': 'Mozilla/5.0'}
     
-    # 1. Obliczamy Momentum 12-miesięczne na cenach zamknięcia
-    momentum = df[tickers].pct_change(12)
-    safe_momentum = df[SAFE_ASSET].pct_change(12)
-    
-    # 2. Sygnał na koniec miesiąca T
-    best_risky_ticker = momentum.idxmax(axis=1)
-    best_risky_val = momentum.max(axis=1)
-    
-    signals = []
-    for date in df.index:
-        # GEM: Wybierz najlepszy ryzykowny, jeśli bije Safe Asset i jest > 0
-        if best_risky_val.loc[date] > safe_momentum.loc[date] and best_risky_val.loc[date] > 0:
-            signals.append(best_risky_ticker.loc[date])
-        else:
-            signals.append(SAFE_ASSET)
-            
-    df['Signal_Asset'] = signals
-    # Pozycja w miesiącu T to sygnał wygenerowany na koniec miesiąca T-1
-    df['Position'] = df['Signal_Asset'].shift(1)
-    
-    # 3. OBLICZANIE ZWROTÓW (NAPRAWIONE)
-    # Pobieramy zwroty wszystkich aktywów
-    returns = df[all_assets].pct_change()
-    
-    # Inicjalizacja kapitału
-    strat_rets = []
-    
-    for i in range(len(df)):
-        current_date = df.index[i]
-        asset_to_hold = df['Position'].iloc[i]
+    try:
+        response = requests.get(url, headers=headers)
+        data = response.json()
+        quotes = data.get('quotes', [])
         
-        if pd.isna(asset_to_hold):
-            strat_rets.append(0.0)
+        if not quotes:
+            st.warning("Nie znaleziono pasujących instrumentów.")
         else:
-            # Pobieramy zwrot aktywa, które faktycznie trzymaliśmy w tym miesiącu
-            actual_return = returns.loc[current_date, asset_to_hold]
-            strat_rets.append(actual_return)
+            # Filtrowanie tylko dla ETF/ETC i giełd europejskich (opcjonalnie, pokazujemy wszystko do wyboru)
+            results = []
+            for q in quotes:
+                # Interesują nas głównie ETF (Equity) i giełdy z kropką (np. .DE, .AS)
+                results.append({
+                    "Symbol": q.get('symbol'),
+                    "Nazwa": q.get('longname'),
+                    "Giełda": q.get('exchDisp'),
+                    "Typ": q.get('quoteType')
+                })
             
-    df['Strategy_Ret'] = strat_rets
-    df['Benchmark_Ret'] = returns[BENCHMARK]
+            df_results = pd.DataFrame(results)
+            
+            st.subheader("Wyniki wyszukiwania:")
+            
+            # Tworzymy tabelę z przyciskami
+            for index, row in df_results.iterrows():
+                col1, col2, col3, col4 = st.columns([2, 5, 2, 2])
+                with col1:
+                    st.write(f"**{row['Symbol']}**")
+                with col2:
+                    st.write(row['Nazwa'])
+                with col3:
+                    st.write(row['Giełda'])
+                with col4:
+                    if st.button("Dodaj", key=f"add_{row['Symbol']}"):
+                        if row['Symbol'] not in st.session_state.selected_assets:
+                            st.session_state.selected_assets.append(row['Symbol'])
+                            st.success(f"Dodano {row['Symbol']}")
+                        else:
+                            st.info("Ten symbol jest już na liście.")
+                            
+    except Exception as e:
+        st.error(f"Błąd podczas wyszukiwania: {e}")
+
+st.divider()
+
+# --- SEKCJA TWOJEJ LISTY ---
+st.subheader("📋 Twoja Lista do Obliczeń")
+
+if st.session_state.selected_assets:
+    # Wyświetlamy aktualną listę z możliwością usuwania
+    for asset in st.session_state.selected_assets:
+        c1, c2 = st.columns([8, 2])
+        with c1:
+            st.info(asset)
+        with c2:
+            if st.button("Usuń", key=f"remove_{asset}"):
+                st.session_state.selected_assets.remove(asset)
+                st.rerun()
     
-    return df.dropna()
-
-# --- WYŚWIETLANIE ---
-try:
-    data = get_data()
-    results = run_gem_logic(data.copy())
-    
-    st.title("💶 GEM Multi-Asset: Poprawiona Logika")
-
-    # Zakres dat
-    dates = results.index.date
-    start_d, end_d = st.select_slider("Wybierz okres", options=dates, value=(dates[0], dates[-1]))
-    
-    mask = (results.index.date >= start_d) & (results.index.date <= end_d)
-    df_v = results.loc[mask].copy()
-    
-    # Kapitalizacja (start 1000 EUR)
-    df_v['Strat_Cum'] = (1 + df_v['Strategy_Ret']).cumprod() * 1000
-    df_v['Bench_Cum'] = (1 + df_v['Benchmark_Ret']).cumprod() * 1000
-
-    # Wykres
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(x=df_v.index, y=df_v['Strat_Cum'], name="Strategia GEM", line=dict(color='#00FF00', width=3)))
-    fig.add_trace(go.Scatter(x=df_v.index, y=df_v['Bench_Cum'], name="S&P 500 B&H", line=dict(color='white', dash='dot')))
-    
-    # Cieniowanie okresów Safe
-    safe_mask = df_v['Position'] == SAFE_ASSET
-    for i in range(1, len(df_v)):
-        if safe_mask.iloc[i]:
-            fig.add_vrect(x0=df_v.index[i-1], x1=df_v.index[i], fillcolor="rgba(255,100,0,0.15)", line_width=0)
-
-    fig.update_layout(template="plotly_dark", height=600, title="Porównanie wyników (EUR)")
-    st.plotly_chart(fig, use_container_width=True)
-
-# --- ZAAWANSOWANA DIAGNOSTYKA ---
-    st.subheader("🕵️ Szczegółowa Analiza Decyzji (Momentum 12m)")
-    st.markdown("Tabela pokazuje wartości momentum, na podstawie których system wybrał aktywo na **następny** miesiąc.")
-
-    # Przygotowanie tabeli z nazwami czytelnymi dla człowieka
-    inv_map = {v: k for k, v in ASSETS.items()}
-    inv_map[SAFE_ASSET] = "🛡️ Safe Asset"
-
-    # Wybieramy kolumny momentum dla wszystkich aktywów
-    tickers = list(ASSETS.values())
-    diag_cols = tickers + [SAFE_ASSET]
-    
-    # Pobieramy momentum z wyników (użyliśmy pct_change(12) wcześniej)
-    momentum_table = results[diag_cols].pct_change(12).tail(15) 
-    
-    # Dodajemy informację o dokonanym wyborze
-    momentum_table['WYBRANY SYGNAŁ'] = results['Signal_Asset'].tail(15).map(inv_map)
-    
-    # Formatowanie dla czytelności
-    styled_diag = momentum_table.sort_index(ascending=False).style.format({
-        col: '{:.2%}' for col in diag_cols
-    }).highlight_max(subset=tickers + [SAFE_ASSET], color='#004d00', axis=1)
-
-    st.dataframe(styled_diag, use_container_width=True)
-
-    st.info("""
-    **Jak czytać tę tabelę?**
-    * Kolory **zielone** wskazują najwyższe momentum w danym miesiącu.
-    * Jeśli najwyższe momentum jest w kolumnie bezpiecznej (lub wszystkie są ujemne), system powinien wybrać Safe Asset.
-    * Pamiętaj: Sygnał wygenerowany w dacie X jest realizowany (widoczny w portfelu) w dacie X+1.
-    """)
-
-except Exception as e:
-    st.error(f"Błąd krytyczny: {e}")
-
-
+    st.write("---")
+    if st.button("Zatwierdź listę i przejdź do danych"):
+        st.success("Lista gotowa! Tickers: " + ", ".join(st.session_state.selected_assets))
+        # Tutaj w przyszłości dodamy przejście do Klocka 2
+else:
+    st.write("Twoja lista jest pusta. Użyj wyszukiwarki powyżej.")
